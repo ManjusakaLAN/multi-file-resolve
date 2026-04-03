@@ -3,7 +3,7 @@ from typing import AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.database import AsyncSessionLocal
+from core.infrastructure.database import AsyncSessionLocal
 from services.file_service import FileService
 
 

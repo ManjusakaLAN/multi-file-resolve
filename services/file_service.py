@@ -1,8 +1,10 @@
 from uuid import uuid4
-from typing import List, Optional, Any, Coroutine, Sequence
+from typing import List, Optional, Any, Coroutine, Sequence, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from models.file_task import FileRecognizeTask  # 请确保导入路径正确
+from util.db_util import paginate
+
 
 class FileService:
     def __init__(self, db: AsyncSession):
@@ -30,12 +32,18 @@ class FileService:
         result = await self.db.execute(select(FileRecognizeTask).where(FileRecognizeTask.id == task_id))
         return result.scalars().first()
 
-    async def get_tasks(self, skip: int = 0, limit: int = 100) -> Sequence[FileRecognizeTask]:
-        """分页获取任务列表"""
-        result = await self.db.execute(
-            select(FileRecognizeTask).offset(skip).limit(limit).order_by(FileRecognizeTask.created_at.desc())
-        )
-        return result.scalars().all()
+    async def get_tasks_paged(self, file_name: str = None, page: int = 1, page_size: int = 10):
+        # 过滤条件就像你写的那样
+        query = select(FileRecognizeTask).where(FileRecognizeTask.status != 'failed')
+        if file_name:
+            query = query.where(FileRecognizeTask.file_name.ilike(f"%{file_name}%"))
+
+        # 排序
+        query = query.order_by(FileRecognizeTask.created_at.desc())
+
+        # 一行调用
+        items, total = await paginate(self.db, query, page, page_size)
+        return items, total
 
     # --- 改 (Update) ---
     async def update_task_progress(self, task_id: str, progress: str, status: str = "resolving") -> Optional[FileRecognizeTask]:

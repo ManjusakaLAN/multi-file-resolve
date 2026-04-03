@@ -9,11 +9,10 @@ import configparser
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # 导入你的配置和模型
-from config.config import settings
-from infrastructure.database import Base
+from core.config import settings
+from core.infrastructure.database import Base
 
 # 必须导入模型类，Alembic 才能检测到表
-from models import file_task
 
 # Alembic Config 对象
 config = context.config

@@ -1,4 +1,4 @@
-from infrastructure.database import AsyncSessionLocal
+from core.infrastructure.database import AsyncSessionLocal
 from services.file_service import FileService
 
 
@@ -8,8 +8,8 @@ async def cleanup_expired_users():
         # 将手动创建的 db 注入给 Service
         file_service = FileService(db)
         # try:
-        #     # await file_service.create_task("test.pdf", "md5", 1)
-        #     # await db.commit()
+        #     await file_service.create_task("test.pdf", "md5", 1)
+        #     await db.commit()
         # except Exception:
         #     await db.rollback()
         #     raise

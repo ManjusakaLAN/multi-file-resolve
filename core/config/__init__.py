@@ -1,7 +1,7 @@
 from pydantic_settings import SettingsConfigDict
 
-from config.app_config import AppSettings
-from config.infrastructure_config import MySQLSettings
+from core.config.app_config import AppSettings
+from core.config.infrastructure_config import MySQLSettings
 
 
 class Settings(

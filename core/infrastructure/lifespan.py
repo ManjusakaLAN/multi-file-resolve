@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
-from config.config import settings
-from infrastructure.database import engine, reset_database
+from core.config import settings
+from core.infrastructure.database import engine, reset_database
 from scheduler.tasks import cleanup_expired_users
 
 

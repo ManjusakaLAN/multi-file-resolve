@@ -2,7 +2,9 @@ import uuid
 
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.sql import func
-from infrastructure.database import Base
+
+from core.enum.status import FileRecognizeTaskStatus
+from core.infrastructure.database import Base
 
 
 class FileRecognizeTask(Base):
@@ -14,7 +16,7 @@ class FileRecognizeTask(Base):
     page = Column(Integer, nullable=True, server_default="0", comment="页数")
     md5 = Column(String(255), nullable=True, comment="文件md5")
     md_location = Column(String(255), nullable=True, comment="解析后最终的md文件的存储位置")
-    status = Column(String(64), nullable=False, server_default="resolving",
+    status = Column(String(64), nullable=False, server_default=FileRecognizeTaskStatus.RESOLVING,
                     comment="任务状态 resolving处理中 finish完成 failed失败")
     progress = Column(String(32), nullable=True, server_default="0%", comment="任务进度")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
