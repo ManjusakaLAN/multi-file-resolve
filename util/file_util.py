@@ -1,5 +1,10 @@
+import hashlib
 import os
+import shutil
 import subprocess
+from pathlib import Path
+
+from fastapi import UploadFile
 from pypdf import PdfReader
 
 
@@ -71,3 +76,55 @@ def convert_with_libreoffice(input_file, output_dir):
     except subprocess.CalledProcessError as e:
         print(f"  └── 转换失败: {input_file}")
         print(f"      错误信息: {e.stderr.decode('utf-8', errors='ignore')}")
+
+
+async def get_file_md5(file: UploadFile) -> str:
+    """
+    获取文件md5 (分块读取，防止大文件撑爆内存)
+    :param file: FastAPI 的 UploadFile 对象
+    :return: 文件的 MD5 字符串 (32位小写)
+    """
+    md5_hash = hashlib.md5()
+    # 定义分块大小，通常 8KB (8192 bytes) 或 64KB 是比较好的平衡点
+    chunk_size = 8192
+
+    # 1. 确保指针在文件开头 (防止在此之前文件被读取过)
+    await file.seek(0)
+
+    # 2. 分块读取并更新 MD5
+    while chunk := await file.read(chunk_size):
+        md5_hash.update(chunk)
+
+    # 3. ！！！极其重要！！！
+    # 算完 MD5 后，文件指针已经到了末尾。
+    # 必须把指针重新移回开头，否则后续保存文件时会保存一个空文件。
+    await file.seek(0)
+
+    # 返回 32 位小写的十六进制字符串
+    return md5_hash.hexdigest()
+
+def storage_file(file: UploadFile, path: Path) -> str:
+    """
+    存储文件到本地目录 返回存储后的路径
+    :param file: FastAPI 上传的文件对象
+    :param path: 目标存储目录（文件夹路径）
+    :return: 存储后的完整绝对路径字符串
+    """
+    # 1. 确保目标目录存在（如果不存在则递归创建）
+    path.mkdir(parents=True, exist_ok=True)
+
+    # 2. 构造完整的保存路径（目录 + 原始文件名）
+    # 注意：如果文件名可能重复，建议在此处加上 UUID 或时间戳
+    save_path = path / file.filename
+
+    # 3. 极其重要：复位文件指针
+    # 防止在调用此方法前读取过 MD5 或文件内容，导致磁头停留在末尾
+    file.file.seek(0)
+
+    # 4. 执行流式拷贝
+    # 使用 'wb' 模式打开目标文件，将上传的临时文件流拷贝进去
+    with save_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 5. 返回绝对路径的字符串形式
+    return str(save_path.absolute())

@@ -1,30 +1,50 @@
+import logging
+import shutil
 from uuid import uuid4
 from typing import List, Optional, Any, Coroutine, Sequence, Tuple
+
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 from models.file_task import FileRecognizeTask  # 请确保导入路径正确
 from util.db_util import paginate
+from util.file_util import get_file_md5, convert_with_libreoffice, get_pdf_page_count, storage_file
+from util.path_util import get_workspace_path
 
+logger = logging.getLogger(__name__)
 
 class FileService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # --- 增 (Create) ---
-    async def create_task(self, file_name: str, md5: str = None, page: int = 0) -> FileRecognizeTask:
+
+    async def create_task(self, file: UploadFile) -> FileRecognizeTask:
+
+        md5 = await get_file_md5(file)
+        # 查询是否以及解析过相同内容的文件 如果有那么直接返回结果
+
         """创建一个新的识别任务"""
-        new_task = FileRecognizeTask(
-            id=str(uuid4()),
-            file_name=file_name,
+        recognize_task = FileRecognizeTask(
+            file_name=file.filename,
             md5=md5,
-            page=page,
-            status="resolving",
-            progress="0%"
         )
-        self.db.add(new_task)
+        self.db.add(recognize_task)
         await self.db.commit()      # 提交到数据库
-        await self.db.refresh(new_task)  # 刷新以获取数据库生成的默认值（如 created_at）
-        return new_task
+
+        # 获取任务id
+        task_id = recognize_task.id
+        # 创建两个目录 存放文件
+        temp_workspace = get_workspace_path() / "temp" / task_id
+        result_workspace = get_workspace_path() / "result" / task_id
+        # 如果没有这两个目录 递归创建
+        temp_workspace.mkdir(parents=True, exist_ok=True)
+        result_workspace.mkdir(parents=True, exist_ok=True)
+
+        # 上传的文件写入到 temp_workspace 目录下
+        file_path =storage_file(file,temp_workspace)
+        # 4. 写入文件
+
+        return None
 
     # --- 查 (Read) ---
     async def get_task_by_id(self, task_id: str) -> Optional[FileRecognizeTask]:
