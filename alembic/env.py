@@ -13,6 +13,7 @@ from core.config import settings
 from core.infrastructure.database import Base
 
 # 必须导入模型类，Alembic 才能检测到表
+from models import user
 
 # Alembic Config 对象
 config = context.config
