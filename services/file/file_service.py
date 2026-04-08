@@ -1,0 +1,159 @@
+import hashlib
+import logging
+import re
+import os
+import time
+import uuid
+from io import BytesIO
+from sqlalchemy import select
+from fastapi import UploadFile, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
+from urllib.parse import quote
+
+from core.config import settings
+from models.file import FileRecord  # 确保这里指向你刚修改的 UploadFile 模型
+from core.infrastructure.storage import minio_client
+
+logger = logging.getLogger(__name__)
+
+
+def _get_human_size(size: int) -> str:
+    """字节单位转换逻辑"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            return f"{size:.2f}{unit}"
+        size /= 1024.0
+    return f"{size:.2f}PB"
+
+
+class FileService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def upload_file(self, file: UploadFile, user_id: str) -> FileRecord:
+        """
+        处理文件上传：包含大小拦截、流式MD5计算、秒传及存储
+        """
+
+        # 尝试从 Header 获取大小进行初步拦截
+        if file.size and file.size > settings.MAX_UPLOAD_SIZE * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"文件过大，最大允许 {settings.MAX_UPLOAD_SIZE}MB (当前: {file.size / 1024 / 1024:.2f}MB)"
+            )
+
+        # 2. 流式计算 MD5 并二次校验大小
+        md5_obj = hashlib.md5()
+        file_size = 0
+        chunks = []  # 用于临时存放数据，避免多次调用 seek(0)
+
+        # 分块读取：每次读 1MB
+        while chunk := await file.read(1024 * 1024):
+            file_size += len(chunk)
+            if file_size > settings.MAX_UPLOAD_SIZE * 1024 * 1024:
+                await file.close()
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="文件内容超过 50MB 限制"
+                )
+            md5_obj.update(chunk)
+            chunks.append(chunk)
+
+        final_md5 = md5_obj.hexdigest()
+
+        # 3. 秒传校验
+        stmt = select(FileRecord).where(FileRecord.md5.__eq__(final_md5))
+        result = await self.db.execute(stmt)
+        existing_file = result.scalar_one_or_none()
+
+        if existing_file:
+            logger.info(f"触发秒传：{existing_file.name} (MD5: {final_md5})")
+            await file.close()
+            return existing_file
+
+        # 4. 文件名清洗与截断
+        original_name = file.filename or "unnamed_file"
+        base_name, extension = os.path.splitext(original_name)
+        # 只保留中文、字母、数字、下划线、点
+        clean_name = re.sub(r'[^\w\.\-\u4e00-\u9fa5]', '', base_name)
+        if len(clean_name) > 200:
+            clean_name = clean_name[:200]
+        final_filename = f"{clean_name}{extension}"
+
+        # 5. 生成存储路径
+        now = time.localtime()
+        timestamp = f"{now.tm_year}_{now.tm_mon:02d}"  # 补零格式化: 2026_04
+        storage_key = f"general/{timestamp}/{uuid.uuid4().hex}_{final_filename}"
+
+        # 6. 上传到 MinIO
+        # 将刚才读取的 chunks 合并为 BytesIO 给同步驱动使用
+        full_content = b"".join(chunks)
+        data_stream = BytesIO(full_content)
+
+        await run_in_threadpool(
+            minio_client.upload_file,
+            object_name=storage_key,
+            data=data_stream,
+            length=file_size,
+            content_type=file.content_type or "application/octet-stream"
+        )
+
+        # 7. 记录数据库
+        new_file_record = FileRecord(
+            file_key=storage_key,
+            name=final_filename,
+            size=file_size,
+            extension=extension.lstrip('.').lower(),
+            mime_type=file.content_type,
+            md5=final_md5,
+            created_by=user_id
+        )
+
+        self.db.add(new_file_record)
+        await self.db.commit()
+        await self.db.refresh(new_file_record)
+
+        await file.close()
+        return new_file_record
+
+    async def download_file(self, file_key: str):
+        # 1. 从数据库获取文件原始名称，用于下载时的文件名显示
+        stmt = select(FileRecord).where(FileRecord.file_key.__eq__(file_key))
+        result = await self.db.execute(stmt)
+        record = result.scalar_one_or_none()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="文件记录不存在")
+
+        try:
+            # 2. 调用同步 Minio 客户端获取对象流
+            # run_in_threadpool 确保同步 IO 不阻塞事件循环
+            response = await run_in_threadpool(minio_client.download_file, file_key)
+
+            # 3. 构造流式响应
+            # 使用生成器逐步读取 MinIO 流，防止大文件撑爆内存
+            def iter_file():
+                try:
+                    yield from response.stream(amt=1024 * 1024)  # 每次读取 1MB
+                finally:
+                    response.close()
+                    response.release_conn()
+
+            # 4. 处理中文件名下载乱码 (RFC 5987 标准)
+            # 这样前端下载时，文件名会显示为 record.name 而不是随机的 key
+            filename_utf8 = quote(record.name)
+            headers = {
+                'Content-Disposition': f"attachment; filename*=utf-8''{filename_utf8}"
+            }
+
+            return StreamingResponse(
+                iter_file(),
+                media_type=record.mime_type or "application/octet-stream",
+                headers=headers
+            )
+
+        except Exception as e:
+            logger.error(f"下载文件失败: {e}")
+            raise HTTPException(status_code=500, detail="从存储服务器获取文件失败")

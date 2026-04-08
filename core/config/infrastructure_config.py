@@ -38,3 +38,45 @@ class RedisSettings(BaseSettings):
         else:
             auth = ""
         return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+# --- 3. Minio配置
+class MinioConfig(BaseSettings):
+    """
+    Minio 对象存储配置
+    """
+    MINIO_ENDPOINT: str = Field(
+        default="127.0.0.1:9000",
+        description="Minio 访问地址 (示例: 192.168.18.32:9000)"
+    )
+
+    MINIO_BUCKET: str = Field(
+        default="ai-all-in-one-bucket",
+        description="项目使用的存储桶名称"
+    )
+
+    MINIO_ACCESS_KEY: str = Field(
+        default="minio",
+        description="访问通行 Key (用户名)"
+    )
+
+    MINIO_SECRET_KEY: str = Field(
+        default="hxxc!@#1309",
+        description="访问密钥 (密码)"
+    )
+
+    MINIO_HTTP_SECURE: bool = Field(
+        default=False,
+        description="是否使用 HTTPS 请求"
+    )
+
+    # 生产环境建议增加：连接超时配置
+    MINIO_CONNECT_TIMEOUT: int = Field(default=10, description="连接超时时间(秒)")
+
+    @computed_field
+    @property
+    def MINIO_URL(self) -> str:
+        """
+        自动生成 Minio 访问前缀，方便日志记录或第三方库使用
+        """
+        protocol = "https" if self.MINIO_HTTP_SECURE else "http"
+        return f"{protocol}://{self.MINIO_ENDPOINT}"

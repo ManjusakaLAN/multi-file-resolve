@@ -3,7 +3,8 @@ from typing import Tuple
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.config.app_config import AppSettings
-from core.config.infrastructure_config import MySQLSettings, RedisSettings
+from core.config.file_config import FileUploadSettings
+from core.config.infrastructure_config import MySQLSettings, RedisSettings,MinioConfig
 from core.config.web_config import AuthSettings, SecuritySettings
 
 
@@ -25,9 +26,11 @@ def get_env_files() -> Tuple[str, ...]:
 class Settings(
     MySQLSettings,
     RedisSettings,
+    MinioConfig,
     AppSettings,
     AuthSettings,
     SecuritySettings,
+    FileUploadSettings,
     BaseSettings  # 确保继承了 BaseSettings
 ):
     # 统一管理 .env 加载

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PermissionService:
-    def __init__(self, db: AsyncSession, redis: Redis | None):
+    def __init__(self, db: AsyncSession, redis: Redis):
         self.db = db
         self.redis = redis
         self.cache_prefix = "user:info:"

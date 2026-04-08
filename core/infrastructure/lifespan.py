@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from core.config import settings
 from core.infrastructure.database import engine, reset_database, AsyncSessionLocal
 from core.infrastructure.cache import redis_manager, get_redis_client
+from core.infrastructure.storage import minio_client
 from scheduler.tasks import cleanup_expired_users
 from services.init.init_service import InitService
 
@@ -15,6 +16,9 @@ async def lifespan(app: FastAPI):
     # ---- 【启动阶段】 ----
     # 缓存初始化
     await redis_manager.init_redis()
+
+    # 存储中间件初始化
+    minio_client.init_client()
 
     # 检查配置：如果设置为 True，则重置数据库
     if settings.CLEAN_DB_ON_START:
@@ -27,6 +31,7 @@ async def lifespan(app: FastAPI):
             service = InitService(db, redis)
             await service.init_basic_data()
         print("♻️ 数据库已清空并重建")
+
     # 启动定时任务
     scheduler = AsyncIOScheduler()
     # 使用 interval 触发器，设置 seconds=10

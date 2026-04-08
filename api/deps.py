@@ -13,7 +13,10 @@ from services.auth.permission_service import PermissionService
 from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
+from services.file.file_service import FileService
+
 logger = logging.getLogger(__name__)
+
 
 ########################### 中间件部分 ###########################
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -27,9 +30,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
+
 async def get_redis() -> Redis:
     """获取 Redis 异步客户端单例"""
     return redis_manager.client
+
 
 ########################### 业务层部分 ###########################
 async def get_login_service(
@@ -44,6 +49,7 @@ async def get_login_service(
     """
     return LoginService(db, redis)
 
+
 async def get_permission_service(
         db: AsyncSession = Depends(get_db),
         redis: Redis = Depends(get_redis)
@@ -56,6 +62,18 @@ async def get_permission_service(
     """
     return PermissionService(db, redis)
 
+
+async def get_file_service(
+        db: AsyncSession = Depends(get_db),
+) -> FileService:
+    """
+    获取文件服务层对象
+    :param db:
+    :return:
+    """
+    return FileService(db)
+
+
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:
     """
@@ -66,6 +84,7 @@ async def get_remote_ip(request: Request) -> str:
         return x_forwarded_for.split(",")[0].strip()
 
     return request.client.host if request.client else "127.0.0.1"
+
 
 async def verify_token(request: Request,
                        redis: Redis = Depends(get_redis)) -> str:
@@ -82,7 +101,7 @@ async def verify_token(request: Request,
         # 调用 Service 验证 Token
         user_id = await TokenService.verify(auth_header, redis)
     except TokenException as e:
-        logger.error(f"获取token失败: {e}" )
+        logger.error(f"获取token失败: {e}")
         raise e
     # 将解析出的用户信息存入 request.state 方便后续调用
     request.state.user_id = user_id
