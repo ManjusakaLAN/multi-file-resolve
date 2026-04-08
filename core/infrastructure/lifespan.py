@@ -4,9 +4,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
 from core.config import settings
-from core.infrastructure.database import engine, reset_database
-from core.infrastructure.cache import redis_manager
+from core.infrastructure.database import engine, reset_database, AsyncSessionLocal
+from core.infrastructure.cache import redis_manager, get_redis_client
 from scheduler.tasks import cleanup_expired_users
+from services.init.init_service import InitService
 
 
 @asynccontextmanager
@@ -19,7 +20,13 @@ async def lifespan(app: FastAPI):
     if settings.CLEAN_DB_ON_START:
         print("⚠️ 警告：检测到 CLEAN_DB_ON_START=True，正在清空数据库...")
         await reset_database()
-
+        # 重新初始化数据
+        print("♻️ 正在初始化数据库...")
+        async with AsyncSessionLocal() as db:
+            redis = get_redis_client()
+            service = InitService(db, redis)
+            await service.init_basic_data()
+        print("♻️ 数据库已清空并重建")
     # 启动定时任务
     scheduler = AsyncIOScheduler()
     # 使用 interval 触发器，设置 seconds=10

@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from schemas.date import CustomDatetime
+from schemas.permission import Role, Permission
+
 
 # 1. 共享属性基类 (定义公共字段)
 class UserBase(BaseModel):
@@ -41,3 +43,7 @@ class User(UserBase):
 class UserInDB(User):
     password: str
     password_salt: str
+
+class UserInfo(User):  # 继承你之前的 User 展示模型
+    roles: List[Role] = []
+    permissions: List[str] = []

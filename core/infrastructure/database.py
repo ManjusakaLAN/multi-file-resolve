@@ -5,7 +5,7 @@ from core.config import settings
 # 1. 创建异步引擎
 engine = create_async_engine(
     settings.ASYNC_DATABASE_URL,
-    echo=True,  # 生产环境建议设为 False，设为 True 会打印所有 SQL 语句
+    echo=settings.DB_LOG,  # 生产环境建议设为 False，设为 True 会打印所有 SQL 语句
     pool_pre_ping=True  # 自动检查连接是否可用
 )
 

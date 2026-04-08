@@ -11,6 +11,7 @@ class MySQLSettings(BaseSettings):
     MYSQL_SERVER: str = "127.0.0.1"
     MYSQL_PORT: int = 3306
     MYSQL_DB: str = "my_fastapi_db"
+    DB_LOG: bool = False
 
     @computed_field
     @property
