@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import computed_field
 from pydantic_settings import BaseSettings
 from urllib.parse import quote_plus, quote
@@ -80,3 +82,19 @@ class MinioConfig(BaseSettings):
         """
         protocol = "https" if self.MINIO_HTTP_SECURE else "http"
         return f"{protocol}://{self.MINIO_ENDPOINT}"
+
+# --- 3. Milvus配置
+class MilvusSettings(BaseSettings):
+    """Milvus 配置"""
+    MILVUS_HOST: str = "127.0.0.1"
+    MILVUS_PORT: str = "19530"
+    MILVUS_USER: Optional[str] = None
+    MILVUS_PASSWORD: Optional[str] = None
+    MILVUS_DATABASE: str = "default"
+
+    # 默认向量维度（根据你的模型调整，如 OpenAI 是 1536，HuggingFace 可能是 768）
+    MILVUS_VECTOR_DIM: int = 1024
+
+    @property
+    def MILVUS_URI(self) -> str:
+        return f"http://{self.MILVUS_HOST}:{self.MILVUS_PORT}"

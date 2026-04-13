@@ -7,6 +7,7 @@ from core.config import settings
 from core.infrastructure.database import engine, reset_database, AsyncSessionLocal
 from core.infrastructure.cache import redis_manager, get_redis_client
 from core.infrastructure.storage import minio_client
+from core.infrastructure.vector_db import milvus_vdb
 from scheduler.tasks import cleanup_expired_users
 from services.init.init_service import InitService
 
@@ -22,8 +23,12 @@ async def lifespan(app: FastAPI):
 
     # 检查配置：如果设置为 True，则重置数据库
     if settings.CLEAN_DB_ON_START:
-        print("⚠️ 警告：检测到 CLEAN_DB_ON_START=True，正在清空数据库...")
+        print("⚠️ 警告：检测到 CLEAN_DB_ON_START=True，正在清空数据库 以及 向量数据库")
         await reset_database()
+        collections = milvus_vdb.list_all_collections()
+        for collection in collections:
+            milvus_vdb.drop_collection(collection)
+
         # 重新初始化数据
         print("♻️ 正在初始化数据库...")
         async with AsyncSessionLocal() as db:
@@ -52,7 +57,12 @@ async def lifespan(app: FastAPI):
 
     # 释放redis连接
     await redis_manager.close_redis()
+    print("🛑 Redis 连接已释放")
 
     # 释放数据库连接
     await engine.dispose()
     print("🛑 数据库连接已释放")
+
+    # 释放 Milvus 连接
+    milvus_vdb.close()
+    print("🛑 Milvus 链接已释放")

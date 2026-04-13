@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.config.app_config import AppSettings
 from core.config.file_config import FileUploadSettings
-from core.config.infrastructure_config import MySQLSettings, RedisSettings,MinioConfig
+from core.config.infrastructure_config import MySQLSettings, RedisSettings, MinioConfig, MilvusSettings
 from core.config.web_config import AuthSettings, SecuritySettings
 
 
@@ -24,13 +24,14 @@ def get_env_files() -> Tuple[str, ...]:
 
 
 class Settings(
-    MySQLSettings,
-    RedisSettings,
-    MinioConfig,
-    AppSettings,
-    AuthSettings,
-    SecuritySettings,
-    FileUploadSettings,
+    MySQLSettings, # 数据库配置
+    RedisSettings, # 缓存配置
+    MinioConfig, # 文件存储配置
+    MilvusSettings, # 向量数据库配置
+    AppSettings, # 应用配置
+    AuthSettings, # 鉴权配置
+    SecuritySettings, # 安全配置
+    FileUploadSettings, # 文件上传配置
     BaseSettings  # 确保继承了 BaseSettings
 ):
     # 统一管理 .env 加载
