@@ -14,6 +14,8 @@ from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
+from services.mcp.mcp_manager import MCPManager
+from services.mcp.mcp_service import McpService
 from services.system.dict_service import DictService
 from services.user.user_service import UserService
 
@@ -90,6 +92,7 @@ async def get_user_service(
     """
     return UserService(db, redis, login_service)
 
+
 async def get_dict_service(
         db: AsyncSession = Depends(get_db),
 ) -> DictService:
@@ -99,6 +102,27 @@ async def get_dict_service(
     :return:
     """
     return DictService(db)
+
+
+async def get_mcp_manager() -> MCPManager:
+    """
+    获取 MCP 管理对象
+    """
+    return MCPManager()
+
+
+async def get_mcp_service(
+        db: AsyncSession = Depends(get_db),
+        mcp_manager: MCPManager = Depends(get_mcp_manager),
+) -> McpService:
+    """
+    获取mcp服务
+    :param db:
+    :param mcp_manager:
+    :return:
+    """
+    return McpService(db, mcp_manager)
+
 
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:

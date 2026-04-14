@@ -100,7 +100,7 @@ async def user_delete(
     return Result.success(await user_service.delete_user(user_id))
 
 
-@system_router.post("/user/change_password", response_model=Result[User], description="修改用户密码")
+@system_router.put("/user/change_password", response_model=Result[User], description="修改用户密码")
 async def user_change_password(
         user_id: str = Body(..., description="用户ID", embed=True),
         old_password: str = Body(..., description="旧密码", embed=True),

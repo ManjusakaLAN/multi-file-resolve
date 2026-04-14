@@ -1,5 +1,4 @@
 import uuid
-from typing import Any
 from sqlalchemy import Column, String, Integer, DateTime, func
 from core.infrastructure.database import Base
 

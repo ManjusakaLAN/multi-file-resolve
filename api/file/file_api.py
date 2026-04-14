@@ -3,7 +3,7 @@ from api.file import file_router
 from fastapi import UploadFile, File, Depends, Request
 
 from schemas.file import FileRecordResponse
-from schemas.general import Result  # 假设你的统一响应模型在这里
+from schemas.general import Result
 from services.file.file_service import FileService
 
 

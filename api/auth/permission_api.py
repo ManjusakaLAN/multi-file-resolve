@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import Depends, Body, Request
 
 from api.auth import permission_router
-from api.deps import get_permission_service, PermissionChecker
+from api.deps import get_permission_service
 from schemas.general import Result, PageResponse
 from schemas.permission import RoleCreate, Role, RoleUpdate, PermissionCreate, PermissionUpdate, Permission
 from schemas.user import UserInfo
@@ -229,16 +229,21 @@ async def role_unbind_permission(
 @permission_router.get("/user/info", response_model=Result[UserInfo])
 async def get_user_info(
         request: Request,
+        user_id: Optional[str] = "",
         permission_service: PermissionService = Depends(get_permission_service),
 ):
     """
     获取用户信息
+    :param user_id:
     :param request:
     :param permission_service:
     :return:
     """
+    if not user_id:
+        user_id = request.state.user_id
+
     return Result.success(message="获取用户信息成功",
-                          data=await permission_service.get_user_info(request.state.user_id))
+                          data=await permission_service.get_user_info(user_id))
 
 
 @permission_router.get("/role/permission/list", response_model=Result[List[Permission]])
