@@ -14,6 +14,8 @@ from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
+from services.system.dict_service import DictService
+from services.user.user_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,30 @@ async def get_file_service(
     """
     return FileService(db)
 
+
+async def get_user_service(
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        login_service: LoginService = Depends(get_login_service),
+) -> UserService:
+    """
+    获取用户服务层对象
+    :param login_service:
+    :param redis:
+    :param db:
+    :return:
+    """
+    return UserService(db, redis, login_service)
+
+async def get_dict_service(
+        db: AsyncSession = Depends(get_db),
+) -> DictService:
+    """
+    获取字典服务层对象
+    :param db:
+    :return:
+    """
+    return DictService(db)
 
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:

@@ -36,7 +36,6 @@ class FileService:
         """
         处理文件上传：包含大小拦截、流式MD5计算、秒传及存储
         """
-
         # 尝试从 Header 获取大小进行初步拦截
         if file.size and file.size > settings.MAX_UPLOAD_SIZE * 1024 * 1024:
             raise HTTPException(
@@ -119,6 +118,11 @@ class FileService:
         return new_file_record
 
     async def download_file(self, file_key: str):
+        """
+        文件下载
+        :param file_key:
+        :return:
+        """
         # 1. 从数据库获取文件原始名称，用于下载时的文件名显示
         stmt = select(FileRecord).where(FileRecord.file_key.__eq__(file_key))
         result = await self.db.execute(stmt)
@@ -157,3 +161,53 @@ class FileService:
         except Exception as e:
             logger.error(f"下载文件失败: {e}")
             raise HTTPException(status_code=500, detail="从存储服务器获取文件失败")
+
+    async def delete_file(self, file_id: str) -> bool:
+        """
+        删除文件：包含数据库记录移除与 MinIO 物理存储清理
+        :param file_id: 数据库中的文件 ID (UUID 或自增 ID)
+        """
+        # 1. 查询数据库获取记录
+        stmt = select(FileRecord).where(FileRecord.id == file_id)
+        result = await self.db.execute(stmt)
+        record = result.scalar_one_or_none()
+
+        if not record:
+            logger.warning(f"删除失败：未找到 ID 为 {file_id} 的文件记录")
+            return False
+
+        file_key = record.file_key
+
+        try:
+            # 2. 检查是否有其他记录也指向同一个物理文件 (秒传场景下的安全保护)
+            # 如果你的逻辑是每个记录对应唯一物理文件，可跳过此步直接删除
+            duplicate_stmt = select(FileRecord).where(
+                FileRecord.file_key == file_key,
+                FileRecord.id != file_id
+            )
+            duplicate_result = await self.db.execute(duplicate_stmt)
+            other_ref = duplicate_result.first()
+
+            # 3. 物理删除：如果没有其他记录引用此 key，则从 MinIO 删除
+            if not other_ref:
+                await run_in_threadpool(
+                    minio_client.delete_file,  # 确保你的 minio_client 有此方法
+                    object_name=file_key
+                )
+                logger.info(f"物理文件已从存储删除: {file_key}")
+            else:
+                logger.info(f"物理文件仍有其他引用，仅删除数据库记录: {file_key}")
+
+            # 4. 删除数据库记录
+            await self.db.delete(record)
+            await self.db.commit()
+
+            return True
+
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"删除文件任务失败: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"文件删除过程中发生错误: {str(e)}"
+            )

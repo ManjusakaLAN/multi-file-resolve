@@ -1,16 +1,20 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from core.config import settings
 
-
-def init_middleware(app: FastAPI):
-    pass
-    # 跨域配置
-    # if settings.ALLOW_ORIGINS:
-    #     app.add_middleware(
-    #         CORSMiddleware,
-    #         allow_origins=[str(origin) for origin in settings.ALLOW_ORIGINS],
-    #         allow_credentials=True,
-    #         allow_methods=["*"],
-    #         allow_headers=["*"],
-    #     )
-
-    # 你还可以在这里添加自定义中间件（如日志、请求计时等）
+def init_cors(app: FastAPI) -> None:
+    """
+    初始化 CORS 中间件
+    """
+    if settings.CORS_ORIGINS:
+        app.add_middleware(
+            CORSMiddleware, # type: ignore
+            # 允许跨域的源列表
+            allow_origins=settings.CORS_ORIGINS,
+            # 是否允许携带 Cookie
+            allow_credentials=True,
+            # 允许跨域的方法 (GET, POST, PUT, DELETE 等)
+            allow_methods=["*"],
+            # 允许跨域的请求头
+            allow_headers=["*"],
+        )

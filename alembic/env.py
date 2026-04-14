@@ -15,6 +15,8 @@ from core.infrastructure.database import Base
 # 必须导入模型类，Alembic 才能检测到表
 from models import user
 from models import file
+from models import dict
+
 # Alembic Config 对象
 config = context.config
 
@@ -36,7 +38,7 @@ if config.config_file_name is not None:
 
 # 解释：设置元数据
 target_metadata = Base.metadata
-
+print(f"Detected tables: {Base.metadata.tables.keys()}")
 def run_migrations_offline() -> None:
     """在 'offline' 模式下运行迁移"""
     url = config.get_main_option("sqlalchemy.url")

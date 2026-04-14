@@ -4,7 +4,7 @@ from api.router import api_router
 from core.config.log_config import setup_logging
 from core.exception.handler import register_exception_handlers
 from core.infrastructure.lifespan import lifespan
-from core.middleware.cors import init_middleware
+from core.middleware.cors import init_cors
 from core.config import settings
 
 
@@ -13,21 +13,21 @@ def create_app() -> FastAPI:
     setup_logging()
 
     """应用工厂函数"""
-    app = FastAPI(
+    echo_app = FastAPI(
         title=settings.PROJECT_NAME,
         lifespan=lifespan
     )
 
-    # 初始中间件 (跨域等)
-    init_middleware(app)
+    # 初始跨域配置
+    init_cors(echo_app)
 
     # 注册总路由
-    app.include_router(api_router)
+    echo_app.include_router(api_router)
 
     # 挂载全局异常处理器
-    register_exception_handlers(app)
+    register_exception_handlers(echo_app)
 
-    return app
+    return echo_app
 
 
 app = create_app()

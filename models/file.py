@@ -18,6 +18,3 @@ class FileRecord(Base):
     # 审计字段
     created_by = Column(String(36), nullable=True, comment="创建人id")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
-
-    def __init__(self, **kw: Any):
-        super().__init__(**kw)

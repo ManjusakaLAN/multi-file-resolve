@@ -4,9 +4,11 @@ from typing import Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.user import User, Role, Permission
+from schemas.dict import DictCreate
 from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
 from services.auth.permission_service import PermissionService
+from services.system.dict_service import DictService
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +16,9 @@ logger = logging.getLogger(__name__)
 class InitService:
     def __init__(self, db: AsyncSession, redis=None):
         self.db = db
-        # 实例化业务 Service，复用其逻辑
         self.perm_service = PermissionService(db, redis)
-        # 注意：LoginService 如果需要 Redis，请传入
         self.login_service = LoginService(db, redis)
+        self.dict_service = DictService(db)
 
     async def init_basic_data(self):
         """核心初始化逻辑"""
@@ -35,6 +36,9 @@ class InitService:
 
             # 4. 建立关联（用户 <-> 角色）
             await self._init_user_role_bindings()
+
+            # 5. 新增系统字典
+            await self._init_system_dict()
 
             logger.info("✅ 项目基础数据初始化全量完成")
         except Exception as e:
@@ -155,3 +159,36 @@ class InitService:
                 # 复用 Service 的分配角色方法
                 await self.perm_service.assign_roles_to_user(str(uid), r_ids)
         logger.info("- 用户-角色关联配置完成")
+
+    async def _init_system_dict(self):
+        """
+        初始化系统字典信息
+        :return:
+        """
+
+        dicts = [
+            DictCreate(
+                dict_code="user_status",
+                label="正常",
+                value="active",
+                sort=0,
+                is_system=1
+            ),
+            DictCreate(
+                dict_code="user_status",
+                label="禁用",
+                value="banned",
+                sort=1,
+                is_system=1
+            ),
+            DictCreate(
+                dict_code="user_status",
+                label="注销",
+                value="closed",
+                sort=2,
+                is_system=1
+            )
+        ]
+
+        for dict_create in dicts:
+            await self.dict_service.create_dict(**dict_create.model_dump())

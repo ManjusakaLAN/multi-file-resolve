@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
+
+from core.enum.status import UserStatus
 from schemas.date import CustomDatetime
 from schemas.permission import Role, Permission
 
@@ -17,15 +19,16 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., description="原始密码", min_length=6)
     confirm_password: str = Field(..., description="确认密码")
-    code: str = Field(..., description="验证码")
+    code:  Optional[str] = Field(default="", description="验证码")
     # 创建时通常不需要 salt、ip 等，由后端自动生成
 
 # 3. 更新用户信息时使用的 Schema (PATCH)
 class UserUpdate(BaseModel):
+    id:  str
     user_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     avatar: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[UserStatus | str] = None
     # 注意：修改密码通常建议单独开一个接口，不放在通用的 Profile 更新里
 
 # 4. 登录成功或读取详细信息时返回的 Schema (不包含密码和盐)

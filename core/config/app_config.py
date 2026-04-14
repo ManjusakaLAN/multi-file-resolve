@@ -1,5 +1,5 @@
 from datetime import timezone, timedelta
-
+from typing import List
 from pydantic_settings import BaseSettings
 
 
@@ -14,6 +14,15 @@ class AppSettings(BaseSettings):
     CLEAN_DB_ON_START: bool = False
     # 设置时区偏移量，例如东八区 (UTC+8)
     TIMEZONE_OFFSET: int = 8
+    # CORS 跨域配置
+    # 格式可以是字符串 "http://localhost:3000,https://example.com"
+    CORS_ORIGINS: List[str] = ["*"]
+
+    @classmethod
+    def assemble_cors_origins(cls, v: str | List[str]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        return v
 
     @property
     def tz_info(self):

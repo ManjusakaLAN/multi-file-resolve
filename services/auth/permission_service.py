@@ -1,16 +1,17 @@
 import json
 import logging
-from typing import List, Set, Optional, Sequence, Any
-from sqlalchemy import select, delete, and_, func
+from typing import List, Optional, Sequence
+from sqlalchemy import select, delete, and_
 from sqlalchemy.orm import selectinload
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exception.middleware_exception import DBException
-# 假设模型路径正确
+
 from models.user import User, Role, Permission, user_role_m2m, role_permission_m2m
 from schemas.general import PageResponse
 from schemas.user import UserInfo, User as UserSchema, Role as RoleSchema
+from util.db_util import paginate
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,7 @@ class PermissionService:
             raise DBException("新增权限失败,请确认是否已经存在该权限")
         return perm
 
+
     async def page_get_permissions(
             self,
             name: Optional[str] = None,
@@ -177,11 +179,7 @@ class PermissionService:
             page_size: int = 10
     ) -> PageResponse:
         """
-        权限分页条件查询
-        :param name: 权限名称模糊搜索
-        :param code: 权限编码模糊搜索
-        :param page: 页码
-        :param page_size: 每页条数
+        权限分页条件查询 (使用通用分页工具类)
         """
         # 1. 构建基础查询语句
         stmt = select(Permission)
@@ -189,34 +187,20 @@ class PermissionService:
         # 2. 动态添加过滤条件
         filters = []
         if name:
-            # 不区分大小写的模糊查询
-            filters.append(Permission.name.ilike(f"%{name}%"))
+            filters.append(Permission.name.contains(name))
         if code:
-            filters.append(Permission.code.ilike(f"%{code}%"))
+            # 也可以直接用 .contains(code)，它会自动帮你加双侧 %
+            filters.append(Permission.code.contains(code))
 
         if filters:
             stmt = stmt.where(and_(*filters))
 
-        # 3. 统计总条数 (必须在 limit/offset 之前执行)
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await self.db.execute(count_stmt)
-        total = total_result.scalar_one() or 0
-
-        # 4. 执行分页查询
-        # 按创建时间倒序排列，确保分页数据相对稳定
+        # 3. 按创建时间倒序排列
         stmt = stmt.order_by(Permission.created_at.desc())
-        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
-        result = await self.db.execute(stmt)
-        data = result.scalars().all()
-
-        # 5. 返回统一分页响应模型
-        return PageResponse(
-            total=total,
-            data=list(data),
-            page=page,
-            page_size=page_size
-        )
+        # 4. 调用通用分页工具类
+        # paginate 内部会自动处理 count 统计和 offset/limit 截断
+        return await paginate(self.db, stmt, page, page_size)
 
     async def assign_roles_to_user(self, user_id: str, role_ids: List[str]):
         """

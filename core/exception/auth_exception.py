@@ -34,3 +34,13 @@ class CaptchaExpireOrNotExistError(AppException):
             code=400,
             status_code=status.HTTP_400_BAD_REQUEST
         )
+
+class UserEditException(AppException):
+    """用户修改异常"""
+
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            code=400,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
