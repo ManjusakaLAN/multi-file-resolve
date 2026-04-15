@@ -26,3 +26,4 @@ async def paginate(session, stmt, page, page_size) -> PageResponse:
         page=page,
         page_size=page_size
     )
+

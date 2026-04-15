@@ -46,7 +46,7 @@ class RoleUpdate(BaseModel):
 # 4. 返回角色信息 (基础版)
 class Role(RoleBase):
     id: str
-    created_at: CustomDatetime
+    created_at: Optional[CustomDatetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

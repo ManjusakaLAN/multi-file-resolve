@@ -12,3 +12,13 @@ class McpException(AppException):
             code=400,
             status_code=status.HTTP_400_BAD_REQUEST
         )
+
+class KBException(AppException):
+    """知识库异常"""
+
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            code=400,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )

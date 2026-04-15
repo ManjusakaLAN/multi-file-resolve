@@ -103,7 +103,7 @@ class PermissionService:
         """删除角色并级联清理受影响用户的缓存"""
         # 1. 查找受影响的用户 ID
         # 使用 .__eq__ 绕过中间表 Table 对象的类型检查警告
-        user_ids_stmt = select(user_role_m2m.c.user_id).where(user_role_m2m.c.ole_id.__eq__(role_id))
+        user_ids_stmt = select(user_role_m2m.c.user_id).where(user_role_m2m.c.role_id.__eq__(role_id))
         res = await self.db.execute(user_ids_stmt)
         affected_user_ids = res.scalars().all()
 

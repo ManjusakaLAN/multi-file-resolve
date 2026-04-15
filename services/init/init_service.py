@@ -3,22 +3,26 @@ from typing import Optional, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.infrastructure.vector_db import MilvusVectorDB
 from models.user import User, Role, Permission
 from schemas.dict import DictCreate
 from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
 from services.auth.permission_service import PermissionService
+from services.kb.kb_service import KBService
 from services.system.dict_service import DictService
 
 logger = logging.getLogger(__name__)
 
 
 class InitService:
-    def __init__(self, db: AsyncSession, redis=None):
+    def __init__(self, db: AsyncSession, redis, milvus_client: MilvusVectorDB):
         self.db = db
         self.perm_service = PermissionService(db, redis)
         self.login_service = LoginService(db, redis)
         self.dict_service = DictService(db)
+        self.kb_service = KBService(db, milvus_client)
 
     async def init_basic_data(self):
         """核心初始化逻辑"""
@@ -39,6 +43,9 @@ class InitService:
 
             # 5. 新增系统字典
             await self._init_system_dict()
+
+            # 6. 新增系统知识库
+            await self._init_system_knowledge_base()
 
             logger.info("✅ 项目基础数据初始化全量完成")
         except Exception as e:
@@ -192,3 +199,39 @@ class InitService:
 
         for dict_create in dicts:
             await self.dict_service.create_dict(**dict_create.model_dump())
+
+    async def _init_system_knowledge_base(self):
+
+        system_manager_role_id = await self._get_id_by_code(Role, "system_manager")
+        user_role_id = await self._get_id_by_code(Role, "user")
+
+        # 通过user_name 拿到user_id
+        stmt = select(User.id).where(User.user_name == "用户02-普通员工")
+        user_id = (await self.db.execute(stmt)).scalar_one_or_none()
+
+        await self.kb_service.create_kb(
+            kb_name="知识库1",
+            kb_type="system",
+            icon_key="",
+            description="超级管理员、系统管理员可查看",
+            permit_role_ids=[system_manager_role_id],
+            user_id=user_id
+        )
+
+        await self.kb_service.create_kb(
+            kb_name="知识库2",
+            kb_type="system",
+            icon_key="",
+            description="所有用户可查看",
+            permit_role_ids=[],
+            user_id=user_id
+        )
+
+        await self.kb_service.create_kb(
+            kb_name="知识库3",
+            kb_type="system",
+            icon_key="",
+            description="超级管理员、普通用户可查看",
+            permit_role_ids=[user_role_id],
+            user_id=user_id
+        )

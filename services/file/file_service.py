@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from core.config import settings
 from models.file import FileRecord  # 确保这里指向你刚修改的 UploadFile 模型
-from core.infrastructure.storage import minio_client
+from core.infrastructure.storage import  MinioClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,9 @@ def _get_human_size(size: int) -> str:
 
 
 class FileService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, minio_client: MinioClient):
         self.db = db
+        self.minio_client = minio_client
 
     async def upload_file(self, file: UploadFile, user_id: str) -> FileRecord:
         """
@@ -72,11 +73,11 @@ class FileService:
             await file.close()
             return existing_file
 
-        # 4. 文件名清洗与截断
+        # 4. 文件名清洗与截断 判断文件名称是否包含特殊字符 有的话去除 "/", "\\", ":", "*", "?", '"', "<", ">", "|"]
         original_name = file.filename or "unnamed_file"
         base_name, extension = os.path.splitext(original_name)
-        # 只保留中文、字母、数字、下划线、点
-        clean_name = re.sub(r'[^\w\.\-\u4e00-\u9fa5]', '', base_name)
+        # 判断文件名称是否包含特殊字符 有的话去除 "/", "\\", ":", "*", "?", '"', "<", ">", "|"]
+        clean_name = re.sub(r'[/\\:*?"<>|]', '', base_name)
         if len(clean_name) > 200:
             clean_name = clean_name[:200]
         final_filename = f"{clean_name}{extension}"
@@ -92,7 +93,7 @@ class FileService:
         data_stream = BytesIO(full_content)
 
         await run_in_threadpool(
-            minio_client.upload_file,
+            self.minio_client.upload_file,
             object_name=storage_key,
             data=data_stream,
             length=file_size,
@@ -134,7 +135,7 @@ class FileService:
         try:
             # 2. 调用同步 Minio 客户端获取对象流
             # run_in_threadpool 确保同步 IO 不阻塞事件循环
-            response = await run_in_threadpool(minio_client.download_file, file_key)
+            response = await run_in_threadpool(self.minio_client.download_file, file_key)
 
             # 3. 构造流式响应
             # 使用生成器逐步读取 MinIO 流，防止大文件撑爆内存
@@ -191,7 +192,7 @@ class FileService:
             # 3. 物理删除：如果没有其他记录引用此 key，则从 MinIO 删除
             if not other_ref:
                 await run_in_threadpool(
-                    minio_client.delete_file,  # 确保你的 minio_client 有此方法
+                    self.minio_client.delete_file,  # 确保你的 minio_client 有此方法
                     object_name=file_key
                 )
                 logger.info(f"物理文件已从存储删除: {file_key}")

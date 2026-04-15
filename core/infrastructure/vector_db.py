@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from packaging import version
-from pymilvus import MilvusClient, DataType, AnnSearchRequest, RRFRanker, MilvusException
+from pymilvus import MilvusClient, DataType, AnnSearchRequest, RRFRanker, MilvusException, FunctionType, Function
 
 from core.config import settings
 
@@ -65,46 +65,66 @@ class MilvusVectorDB:
 
     def create_hybrid_collection(self, collection_name: str, dim: int = 1024):
         """
-        创建支持混合检索的集合
+        创建支持混合检索的集合 (修复 BM25 报错版)
         """
         if self.client.has_collection(collection_name):
             self._ensure_loaded(collection_name)
             return
 
-        # 1. 定义 Schema (开启动态字段以存储任意 metadata)
+        # 1. 定义 Schema
         schema = self.client.create_schema(auto_id=True, enable_dynamic_field=True)
-        schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=True)
+        schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
         schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dim)
-        schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+        schema.add_field(
+            field_name="text",
+            datatype=DataType.VARCHAR,
+            max_length=65535,
+            enable_analyzer=True,  # 必须设为 True
+            # 如果是中文知识库，建议使用 jieba 分词
+            # 如果是英文或通用，可以使用默认的 standard
+            analyzer_params={"tokenizer": "jieba"}
+        )
         schema.add_field(field_name="meta_data", datatype=DataType.JSON)
 
-        # 混合检索必备：稀疏向量字段
+        # 混合检索：增加稀疏向量字段，用于接收 BM25 函数的输出
         if self.is_hybrid_supported:
             schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
 
+            # 添加 BM25 内建函数
+            bm25_function = Function(
+                name="bm25_fn",
+                input_field_names=["text"],
+                output_field_names=["sparse_vector"],
+                function_type=FunctionType.BM25,
+            )
+            schema.add_function(bm25_function)
+
         # 2. 准备索引参数
         index_params = self.client.prepare_index_params()
-        index_params.add_index(field_name="vector", metric_type="COSINE", index_type="AUTOINDEX")
+
+        # 稠密向量索引
+        index_params.add_index(
+            field_name="vector",
+            metric_type="COSINE",
+            index_type="AUTOINDEX"
+        )
 
         if self.is_hybrid_supported:
+            # 【关键点】：此时这里的 BM25 索引才会生效
             index_params.add_index(
                 field_name="sparse_vector",
                 metric_type="BM25",
                 index_type="SPARSE_INVERTED_INDEX"
             )
 
-        # 3. 启用全文检索函数 (将文本自动转为稀疏向量)
-        if self.is_hybrid_supported:
-            # 注意：某些 PyMilvus 版本通过 schema 配置 Function，此处直接在 create 流程中由索引触发 BM25 逻辑
-            pass
-
+        # 3. 创建与加载
         self.client.create_collection(
             collection_name=collection_name,
             schema=schema,
             index_params=index_params
         )
         self.client.load_collection(collection_name)
-        logger.info(f"混合集合 {collection_name} 初始化完成")
+        logger.info(f"混合集合 {collection_name} 初始化完成 (含 BM25 函数)")
 
     def upsert(self, collection_name: str, data: List[Dict[str, Any]]):
         """
@@ -247,11 +267,4 @@ class MilvusVectorDB:
         """
         self.client.close()
 
-
-# 导出混合搜索单例
-try:
-    milvus_vdb = MilvusVectorDB()
-    logger.info("MilvusVectorDB 初始化成功")
-except Exception as e:
-    logger.error(f"初始化 MilvusVectorDB 失败: {e}")
 

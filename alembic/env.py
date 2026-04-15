@@ -16,6 +16,7 @@ from core.infrastructure.database import Base
 from models import user
 from models import file
 from models import dict
+from models import knowledge
 
 # Alembic Config 对象
 config = context.config

@@ -8,12 +8,15 @@ from core.config import settings
 from core.exception.security_exception import TokenException
 from core.infrastructure.database import AsyncSessionLocal
 from core.infrastructure.cache import redis_manager
+from core.infrastructure.storage import MinioClient
+from core.infrastructure.vector_db import MilvusVectorDB
 from services.auth.login_service import LoginService
 from services.auth.permission_service import PermissionService
 from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
+from services.kb.kb_service import KBService
 from services.mcp.mcp_manager import MCPManager
 from services.mcp.mcp_service import McpService
 from services.system.dict_service import DictService
@@ -36,8 +39,27 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_redis() -> Redis:
-    """获取 Redis 异步客户端单例"""
+    """
+    获取Redis 异步客户端单例
+    :return:
+    """
     return redis_manager.client
+
+
+async def get_storage() -> MinioClient:
+    """
+    获取存储对象
+    :return:
+    """
+    return MinioClient()
+
+
+async def get_milvus() -> MilvusVectorDB:
+    """
+    获取 Milvus 对象
+    :return:
+    """
+    return MilvusVectorDB()
 
 
 ########################### 业务层部分 ###########################
@@ -69,13 +91,15 @@ async def get_permission_service(
 
 async def get_file_service(
         db: AsyncSession = Depends(get_db),
+        minio_client: MinioClient = Depends(get_storage),
 ) -> FileService:
     """
     获取文件服务层对象
+    :param minio_client:
     :param db:
     :return:
     """
-    return FileService(db)
+    return FileService(db, minio_client)
 
 
 async def get_user_service(
@@ -123,6 +147,11 @@ async def get_mcp_service(
     """
     return McpService(db, mcp_manager)
 
+async def get_kb_service(
+        db: AsyncSession = Depends(get_db),
+        milvus_client = Depends(get_milvus),
+):
+    return KBService(db, milvus_client)
 
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:

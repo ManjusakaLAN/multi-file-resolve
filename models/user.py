@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, DateTime, func, Table, ForeignKey
 from sqlalchemy.orm import relationship
 
 from core.infrastructure.database import Base
+from models.knowledge import role_kb_m2m
 
 # 用户与角色关联
 user_role_m2m = Table(
@@ -57,6 +58,8 @@ class Role(Base):
     # 关系映射
     users = relationship("User", secondary=user_role_m2m, back_populates="roles")
     permissions = relationship("Permission", secondary=role_permission_m2m, back_populates="roles")
+    # 角色拥有的知识库权限
+    knowledge_bases = relationship("KnowledgeBase", secondary=role_kb_m2m, back_populates="permit_roles")
 
 
 class Permission(Base):
