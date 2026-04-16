@@ -39,7 +39,6 @@ async def kb_page_list(
     分页查询知识库列表
     :param request:
     :param kb_name:
-    :param kb_type:
     :param page:
     :param page_size:
     :param kb_service:

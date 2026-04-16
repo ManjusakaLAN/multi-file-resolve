@@ -16,8 +16,6 @@ multi-file-resolve/
 │   ├── script.py.mako                      # 迁移模板
 │   ├── README                              # Alembic 说明
 │   └── versions/
-│       ├── f8f93e29d3e0_init.py            # 迁移1: 删除遗留 users 表
-│       └── 58fd772b725e_init.py            # 迁移2: 创建 file_recognize_task 和 file_recognize_worker 表
 │
 ├── api/                                    # API 路由层
 │   ├── __init__.py

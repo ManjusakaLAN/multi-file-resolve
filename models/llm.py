@@ -19,21 +19,19 @@ class LLMModel(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键ID")
     model_name = Column(String(64), nullable=False, comment="展示名称。例如：DeepSeek 满血版, GPT-4o 预览版")
-    model_code = Column(String(64), unique=True, nullable=False, comment="模型标识符。例如：deepseek-chat, gpt-4o, claude-3-5-sonnet")
+    model_code = Column(String(64), nullable=False, comment="模型标识符。例如：deepseek-chat, gpt-4o, claude-3-5-sonnet")
     provider = Column(String(32), nullable=False, index=True, comment="供应商标识。例如：DeepSeek, OpenAI, AliCloud, Anthropic")
-
+    default_api_base = Column(String(255), nullable=True, comment="默认API地址。例如：https://api.deepseek.com")
     # 配置类型
     config_type = Column(String(12), default='system', comment="配置来源。system:系统内置(如官方GPT4); custom:用户私有(如接入本地Ollama)")
-
     # 状态
-    status = Column(String(12), default='active', comment="可用状态。active:激活并展示; banned:禁用并隐藏")
+    status = Column(String(12), default='active', comment="可用状态。active:激活; banned:禁用")
 
     # 自动化映射
     credentials = relationship(
         "LLMCredential",
         secondary=model_credential_m2m,
         back_populates="models",
-        comment="关联此模型的所有用户凭据列表"
     )
 
     created_by = Column(String(36), index=True, comment="创建人ID。系统内置模型此字段为空; 用户自建模型存用户UUID")
@@ -52,14 +50,11 @@ class LLMCredential(Base):
     api_key = Column(String(512), nullable=False, comment="API密钥。用户填写的 sk-xxxx...")
     api_base = Column(String(255), nullable=True, comment="代理地址或模型地址。例如：https://api.deepseek.com 或用户的中转URL")
 
-    is_default = Column(Boolean, default=False, comment="是否设为该供应商的默认Key。例如：用户有3个DeepSeek Key，设为True的将作为通用Key")
-
     # 自动化映射
     models = relationship(
         "LLMModel",
         secondary=model_credential_m2m,
         back_populates="credentials",
-        comment="此凭据精确绑定的模型列表"
     )
 
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")

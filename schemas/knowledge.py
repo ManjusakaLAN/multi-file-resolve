@@ -25,7 +25,7 @@ class KnowledgeBaseCreate(BaseModel):
     kb_type: str = Field(default='personal', description="类型: personal 个人 / system 系统", max_length=12)
     icon_key: Optional[str] = Field(default='', description="图标key", max_length=256)
     description: Optional[str] = Field(None, description="知识库描述")
-    permit_role_ids: Optional[List[str]] = Field([], description="知识库角色权限 id数组")
+    permit_roles: Optional[List[Role]] = Field([], description="知识库角色权限")
 
 # 3. 更新知识库信息时使用的 Schema (PATCH/PUT)
 class KnowledgeBaseUpdate(BaseModel):
@@ -38,7 +38,7 @@ class KnowledgeBaseUpdate(BaseModel):
     open_status: Optional[str | KBOpenStatus] = Field(None, max_length=12)
     icon_key: Optional[str] = Field(None, max_length=256)
     description: Optional[str] = Field(None)
-    permit_role_ids: Optional[List[str]] = Field([], description="知识库角色权限 id数组")
+    permit_roles: Optional[List[Role]] = Field([], description="知识库角色权限")
 
 
 # 4. 接口返回/读取详细信息时使用的 Schema (Response)

@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 
+from schemas.date import CustomDatetime
+
 
 # --- 1. 基础模型 (定义通用字段) ---
 class FileRecordBase(BaseModel):
@@ -17,7 +19,7 @@ class FileRecordResponse(FileRecordBase):
     id: str = Field(..., description="主键ID")
     file_key: str = Field(..., description="访问唯一标识")
     created_by: Optional[str] = Field(None, description="创建人ID")
-    created_at: datetime = Field(..., description="创建时间")
+    created_at: CustomDatetime = Field(..., description="创建时间")
 
     # Pydantic V2 配置：允许从 SQLAlchemy 模型对象转换
     model_config = ConfigDict(from_attributes=True)
@@ -28,7 +30,3 @@ class FileRecordQuery(BaseModel):
     name: Optional[str] = Field(None, description="按文件名模糊搜索")
     extension: Optional[str] = Field(None, description="按扩展名过滤")
     created_by: Optional[str] = Field(None, description="按创建人过滤")
-
-    # 也可以加入日期范围查询
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None

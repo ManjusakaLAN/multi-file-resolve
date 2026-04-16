@@ -11,6 +11,36 @@ from util.db_util import paginate  # 假设你的分页工具在此路径
 logger = logging.getLogger(__name__)
 
 
+async def condition_query_stmt_combine(dict_code: str, label: str, value: str, is_system: int):
+    """
+    条件查询 sql表达式组装
+    :param dict_code:
+    :param label:
+    :param value:
+    :param is_system:
+    :return:
+    """
+    stmt = select(DictModel)
+
+    # 动态构建过滤条件
+    filters = []
+    if dict_code:
+        filters.append(DictModel.dict_code == dict_code)
+    if label:
+        filters.append(DictModel.label.contains(label))
+    if value:
+        filters.append(DictModel.value.contains(value))
+    if is_system:
+        filters.append(DictModel.is_system == is_system)
+
+    if filters:
+        stmt = stmt.where(and_(*filters))
+
+    # 排序：先按 code 组聚合，再按 sort 排序
+    stmt = stmt.order_by(DictModel.dict_code.asc(), DictModel.sort.asc())
+    return stmt
+
+
 class DictService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -27,27 +57,23 @@ class DictService:
         """
         分页条件查询 dict
         """
-        stmt = select(DictModel)
-
-        # 动态构建过滤条件
-        filters = []
-        if dict_code:
-            filters.append(DictModel.dict_code == dict_code)
-        if label:
-            filters.append(DictModel.label.contains(label))
-        if value:
-            filters.append(DictModel.value.contains(value))
-        if is_system:
-            filters.append(DictModel.is_system == is_system)
-
-        if filters:
-            stmt = stmt.where(and_(*filters))
-
-        # 排序：先按 code 组聚合，再按 sort 排序
-        stmt = stmt.order_by(DictModel.dict_code.asc(), DictModel.sort.asc())
+        stmt = await condition_query_stmt_combine(dict_code, label, value, is_system)
         return await paginate(self.db, stmt, page, page_size)
 
-    async def get_dict_by_id(self, dict_id: int) -> DictModel:
+    async def list_dict(self, dict_code: str, label: str, value: str, is_system: int):
+        """
+        查询所有字典信息
+        :param dict_code:
+        :param label:
+        :param value:
+        :param is_system:
+        :return:
+        """
+        stmt = await condition_query_stmt_combine(dict_code, label, value, is_system)
+        results = await self.db.execute(stmt)
+        return results.scalars()
+
+    async def get_dict_by_id(self, dict_id: str) -> DictModel:
         """
         内部辅助方法：根据ID获取字典模型
         """
@@ -97,7 +123,7 @@ class DictService:
 
     async def update_dict(
             self,
-            dict_id: int,  # 建议变量名改为 dict_id 以免与内置 id 冲突
+            dict_id: str,  # 建议变量名改为 dict_id 以免与内置 id 冲突
             dict_code: str,
             label: str,
             value: str,
@@ -172,33 +198,3 @@ class DictService:
             await self.db.rollback()
             logger.error(f"删除字典失败: {e}")
             raise HTTPException(status_code=500, detail="数据库删除失败")
-
-    async def list_dict(self, dict_code: str, label: str, value: str, is_system: str):
-        """
-        查询所有字典信息
-        :param dict_code:
-        :param label:
-        :param value:
-        :param is_system:
-        :return:
-        """
-        stmt = select(DictModel)
-
-        # 动态构建过滤条件
-        filters = []
-        if dict_code:
-            filters.append(DictModel.dict_code == dict_code)
-        if label:
-            filters.append(DictModel.label.contains(label))
-        if value:
-            filters.append(DictModel.value.contains(value))
-        if is_system:
-            filters.append(DictModel.is_system == is_system)
-
-        if filters:
-            stmt = stmt.where(and_(*filters))
-
-        # 排序：先按 code 组聚合，再按 sort 排序
-        stmt = stmt.order_by(DictModel.dict_code.asc(), DictModel.sort.asc())
-        results = await self.db.execute(stmt)
-        return results.scalars()

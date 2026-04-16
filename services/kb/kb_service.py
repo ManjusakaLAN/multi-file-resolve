@@ -11,6 +11,7 @@ from core.exception.llm_exception import KBException
 from core.infrastructure.vector_db import MilvusVectorDB
 from models.knowledge import KnowledgeBase, role_kb_m2m
 from models.user import Role, user_role_m2m
+from schemas.permission import Role as RoleSchema
 from util.convert_util import convert_cn_to_pinyin
 from util.random_util import string_random
 from schemas.general import PageResponse
@@ -25,7 +26,7 @@ class KBService:
         self.milvus_client = milvus_client
 
     async def create_kb(self, kb_name: str, kb_type: KBType | str, icon_key: str, description: str,
-                        permit_role_ids: list[str], user_id: str) -> KnowledgeBase:
+                        permit_roles: list[RoleSchema], user_id: str) -> KnowledgeBase:
         # 1. 检查同名
         stmt = select(KnowledgeBase).where(and_(KnowledgeBase.kb_name == kb_name, KnowledgeBase.is_deleted == False))
         if (await self.db.execute(stmt)).scalar_one_or_none():
@@ -50,7 +51,8 @@ class KBService:
             )
 
             # 3. 系统库权限绑定
-            if kb_type == KBType.SYSTEM and permit_role_ids:
+            if kb_type == KBType.SYSTEM and permit_roles:
+                permit_role_ids = [role['id'] for role in permit_roles]
                 role_stmt = select(Role).where(Role.id.in_(permit_role_ids))
                 roles = (await self.db.execute(role_stmt)).scalars().all()
                 kb.permit_roles = roles
@@ -66,12 +68,7 @@ class KBService:
             logger.error(f"创建知识库失败: {e}")
             raise e
 
-    async def page_list_kb(self, kb_name: Optional[str],
-                           user_id: str, page: int = 1, page_size: int = 10) -> PageResponse:
-        """
-        分页条件查询知识库 (含复杂权限过滤)
-        逻辑补充：系统库如果是 closed 状态，非管理员/创建者不可见
-        """
+    async def permission_query_stmt_combine(self, kb_name: str, user_id: str):
         # 1. 获取当前用户的所有角色编码
         role_stmt = select(Role.code).join(
             user_role_m2m,
@@ -122,10 +119,28 @@ class KBService:
 
         # 5. 排序与分页
         stmt = stmt.order_by(KnowledgeBase.created_at.desc())
+        return stmt
+
+    async def page_list_kb(self, kb_name: Optional[str],
+                           user_id: str, page: int = 1, page_size: int = 10) -> PageResponse:
+        """
+        分页条件查询知识库 (含复杂权限过滤)
+        逻辑补充：系统库如果是 closed 状态，非管理员/创建者不可见
+        """
+        stmt = await self.permission_query_stmt_combine(kb_name, user_id)
         return await paginate(self.db, stmt, page, page_size)
 
+    async def list_kb(self, kb_name: str, user_id: str) -> Sequence[KnowledgeBase]:
+        """
+        不分页列表（带权限过滤，符合 SQLAlchemy 2.0 规范格式）
+        逻辑：Admin/创建者看全部；普通人仅看 open 状态的系统库（需角色授权或库公开）
+        """
+        stmt = await self.permission_query_stmt_combine(kb_name, user_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def update_kb(self, kb_id: str, kb_name: str, open_status: KBOpenStatus | str,
-                        icon_key: str, description: str, permit_role_ids: Optional[list[str]]) -> KnowledgeBase:
+                        icon_key: str, description: str, permit_roles: Optional[list[RoleSchema]]) -> KnowledgeBase:
         """
         更新知识库及其权限
         """
@@ -161,9 +176,10 @@ class KBService:
         # 4. 【核心修复】更新权限部分
         # 只有系统库需要处理 permit_role_ids 的角色绑定
         if kb.kb_type.__eq__(KBType.SYSTEM):
-            if permit_role_ids is not None:
+            if permit_roles is not None:
                 # 如果传了空列表 []，则代表清空所有角色，变更为公开库
-                if len(permit_role_ids) > 0:
+                if len(permit_roles) > 0:
+                    permit_role_ids = [role['id'] for role in permit_roles]
                     role_stmt = select(Role).where(Role.id.in_(permit_role_ids))
                     roles = (await self.db.execute(role_stmt)).scalars().all()
                     # 直接赋值，SQLAlchemy 会自动计算 Diff 并更新中间表 role_kb_rel
@@ -209,62 +225,6 @@ class KBService:
         if not kb:
             raise KBException(message="知识库不存在或已删除")
         return kb
-
-    async def list_kb(self, kb_name: str, user_id: str) -> Sequence[KnowledgeBase]:
-        """
-        不分页列表（带权限过滤，符合 SQLAlchemy 2.0 规范格式）
-        逻辑：Admin/创建者看全部；普通人仅看 open 状态的系统库（需角色授权或库公开）
-        """
-        # 1. 获取当前用户的所有角色编码，判断是否为管理员
-        role_stmt = select(Role.code).join(
-            user_role_m2m,
-            Role.id.__eq__(user_role_m2m.c.role_id)
-        ).where(user_role_m2m.c.user_id.__eq__(user_id))
-
-        user_roles = (await self.db.execute(role_stmt)).scalars().all()
-        is_admin = "admin" in user_roles
-
-        # 2. 基础查询：过滤已删除
-        stmt = select(KnowledgeBase).where(KnowledgeBase.is_deleted.__eq__(False))
-
-        # 3. 权限过滤
-        if not is_admin:
-            # 3.1 获取该用户通过角色关联到的所有知识库 ID
-            kb_ids_stmt = select(role_kb_m2m.c.kb_id).join(
-                user_role_m2m,
-                user_role_m2m.c.role_id.__eq__(role_kb_m2m.c.role_id)
-            ).where(user_role_m2m.c.user_id.__eq__(user_id))
-
-            permitted_kb_ids = (await self.db.execute(kb_ids_stmt)).scalars().all()
-
-            # 3.2 构造权限过滤条件
-            # 条件 A：我是创建者 (Owner) -> 无视状态，直接可见
-            owner_cond = KnowledgeBase.created_by.__eq__(user_id)
-
-            # 条件 B：系统库 (System) 且 状态为开放 (Open) 的可见性策略
-            # 在开放的前提下：(角色被授权) OR (无角色限制的公开库)
-            system_open_cond = and_(
-                KnowledgeBase.kb_type.__eq__(KBType.SYSTEM),
-                KnowledgeBase.open_status.__eq__(KBOpenStatus.OPEN),
-                or_(
-                    KnowledgeBase.id.in_(permitted_kb_ids),
-                    ~KnowledgeBase.permit_roles.any()
-                )
-            )
-
-            # 合并过滤条件
-            stmt = stmt.where(or_(owner_cond, system_open_cond))
-
-        # 4. 业务条件过滤
-        if kb_name:
-            stmt = stmt.where(KnowledgeBase.kb_name.contains(kb_name))
-
-        # 5. 排序
-        stmt = stmt.order_by(KnowledgeBase.created_at.desc())
-
-        # 6. 执行查询
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
 
     async def get_kb_detail(self, kb_id: str) -> KnowledgeBase:
         """

@@ -4,8 +4,12 @@ from typing import Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.enum.kb import KBType, KBOpenStatus
+from core.enum.mcp import McpType, McpConnectedStatus
+from core.enum.model import ModelProvider, ModelConfigType
 from core.infrastructure.vector_db import MilvusVectorDB
 from models.user import User, Role, Permission
+from schemas.user import Role as RoleSchema
 from schemas.dict import DictCreate
 from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
@@ -174,6 +178,7 @@ class InitService:
         """
 
         dicts = [
+            # 用户状态字典
             DictCreate(
                 dict_code="user_status",
                 label="正常",
@@ -194,7 +199,67 @@ class InitService:
                 value="closed",
                 sort=2,
                 is_system=1
-            )
+            ),
+            # mcp类型字典(mcp_type)
+            *[
+                DictCreate(
+                    dict_code="mcp_type",
+                    label=McpType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(McpType)
+            ],
+            # mcp连接情况(mcp_connected_status)
+            *[
+                DictCreate(
+                    dict_code="mcp_connected_status",
+                    label=McpConnectedStatus.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(McpConnectedStatus)
+            ],
+            # 模型配置类型字典(model_config_type)
+            *[
+                DictCreate(
+                    dict_code="model_config_type",
+                    label=ModelConfigType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ModelConfigType)
+            ],
+            # 模型供应商字典 (model_provider)
+            *[
+                DictCreate(
+                    dict_code="model_provider",
+                    label=ModelProvider.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ModelProvider)
+            ],
+            # 知识库类型(kb_type)
+            *[
+                DictCreate(
+                    dict_code="kb_type",
+                    label=KBType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(KBType)
+            ],
+            # 知识库开放状态(kb_open_status)
+            *[
+                DictCreate(
+                    dict_code="kb_open_status",
+                    label=KBOpenStatus.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(KBOpenStatus)
+            ],
         ]
 
         for dict_create in dicts:
@@ -202,8 +267,11 @@ class InitService:
 
     async def _init_system_knowledge_base(self):
 
-        system_manager_role_id = await self._get_id_by_code(Role, "system_manager")
-        user_role_id = await self._get_id_by_code(Role, "user")
+        stmt = select(Role).where(Role.code == "system_manager")
+        # 转为字典
+        system_manager_role = RoleSchema.model_validate((await self.db.execute(stmt)).scalars().first()).model_dump()
+        stmt = select(Role).where(Role.code == "user")
+        user_role = RoleSchema.model_validate((await self.db.execute(stmt)).scalars().first()).model_dump()
 
         # 通过user_name 拿到user_id
         stmt = select(User.id).where(User.user_name == "用户02-普通员工")
@@ -214,7 +282,7 @@ class InitService:
             kb_type="system",
             icon_key="",
             description="超级管理员、系统管理员可查看",
-            permit_role_ids=[system_manager_role_id],
+            permit_roles=[system_manager_role],
             user_id=user_id
         )
 
@@ -223,7 +291,7 @@ class InitService:
             kb_type="system",
             icon_key="",
             description="所有用户可查看",
-            permit_role_ids=[],
+            permit_roles=[user_role],
             user_id=user_id
         )
 
@@ -232,6 +300,6 @@ class InitService:
             kb_type="system",
             icon_key="",
             description="超级管理员、普通用户可查看",
-            permit_role_ids=[user_role_id],
+            permit_roles=[user_role],
             user_id=user_id
         )

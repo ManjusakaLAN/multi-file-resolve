@@ -55,4 +55,3 @@ class RoleWithPermissions(Role):
     permissions: List[str] = []
 
 
-

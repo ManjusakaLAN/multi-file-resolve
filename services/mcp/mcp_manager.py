@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from contextlib import AsyncExitStack
 from datetime import datetime
 from typing import List, Optional, Any, Dict
@@ -112,6 +113,7 @@ async def test_connection(url: str, mcp_type: McpType | str, timeout: int = 10):
         return {"success": False, "message": f"连接失败：远程服务在未响应"}
     except Exception as e:
         err_msg = str(e)
+        traceback.print_exc()
         # 优化常见 HTTP 错误展示
         if "502" in err_msg:
             err_msg = "502 Bad Gateway (目标服务未启动或网关配置错误)"

@@ -1,8 +1,8 @@
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-from datetime import datetime
 
 from core.enum.mcp import McpConnectedStatus
+from schemas.date import CustomDatetime
 
 
 # 1. 共享属性基类
@@ -44,7 +44,7 @@ class McpServerResponse(McpServerBase):
     """
     id: str = Field(..., description="主键ID")
     created_by: str = Field(..., description="创建人id")
-    created_at: datetime = Field(..., description="创建时间")
+    created_at: CustomDatetime = Field(..., description="创建时间")
 
     # Pydantic V2 配置：允许从 SQLAlchemy 模型对象转换
     model_config = ConfigDict(from_attributes=True)
