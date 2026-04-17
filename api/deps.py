@@ -8,7 +8,7 @@ from core.config import settings
 from core.exception.security_exception import TokenException
 from core.infrastructure.database import AsyncSessionLocal
 from core.infrastructure.cache import redis_manager
-from core.infrastructure.storage import MinioClient
+from core.infrastructure.storage import MinioClient, minio_client
 from core.infrastructure.vector_db import MilvusVectorDB
 from services.auth.login_service import LoginService
 from services.auth.permission_service import PermissionService
@@ -53,7 +53,7 @@ async def get_storage() -> MinioClient:
     获取存储对象
     :return:
     """
-    return MinioClient()
+    return minio_client
 
 
 async def get_milvus() -> MilvusVectorDB:

@@ -5,6 +5,8 @@ import os
 import time
 import uuid
 from io import BytesIO
+from pathlib import Path
+
 from sqlalchemy import select
 from fastapi import UploadFile, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
@@ -15,6 +17,7 @@ from urllib.parse import quote
 from core.config import settings
 from models.file import FileRecord  # 确保这里指向你刚修改的 UploadFile 模型
 from core.infrastructure.storage import  MinioClient
+from util import file_util
 
 logger = logging.getLogger(__name__)
 
@@ -212,3 +215,30 @@ class FileService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"文件删除过程中发生错误: {str(e)}"
             )
+
+    async def file_upload_and_convert(self, file: UploadFile, user_id: str):
+
+        file_record = await self.upload_file(file, user_id)
+
+        base_dir = Path.cwd()
+        ocr_task_dir = base_dir / "temp" / f"ocr_{file_record.id}"
+        temp_dir_input = ocr_task_dir / "input"
+        temp_dir_output = ocr_task_dir / "output"
+
+        # 递归创建目录
+        temp_dir_input.mkdir(parents=True, exist_ok=True)
+        temp_dir_output.mkdir(parents=True, exist_ok=True)
+
+        file_input_path = temp_dir_input / file.filename
+        # 准确定位生成的 PDF 路径
+        pdf_path = temp_dir_output / f"{file_input_path.stem}.pdf"
+
+        if file.filename.endswith(".pdf"):
+            await run_in_threadpool(
+                self.minio_client.download,  # 确保你的 minio_client 有此方法
+                object_name=file_record.file_key,
+                target_filepath=str(pdf_path)
+            )
+
+        # 4. 执行文件转换 (LibreOffice -> PDF)
+        file_util.convert_with_libreoffice(str(file_input_path), str(temp_dir_output))

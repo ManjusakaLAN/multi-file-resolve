@@ -5,6 +5,7 @@ from api.file import file_api
 from api.system import user_api, dict_api, system_router
 from api.llm import mcp_api,credential_api,model_api,mcp_router,credential_router,model_router
 from api.kb import kb_api, kb_router
+from api.contract import contract_router, contract_api
 api_router = APIRouter()
 
 # 统一挂载路由
@@ -16,3 +17,4 @@ api_router.include_router(mcp_router)
 api_router.include_router(kb_router)
 api_router.include_router(credential_router)
 api_router.include_router(model_router)
+api_router.include_router(contract_router)
