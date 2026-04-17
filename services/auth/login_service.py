@@ -40,7 +40,7 @@ def _generate_tokens(user: User) -> Tuple[str, str]:
 
 
 class LoginService:
-    def __init__(self, db: AsyncSession, redis: Redis |  None):
+    def __init__(self, db: AsyncSession, redis: Redis):
         self.db = db
         self.redis = redis
 
