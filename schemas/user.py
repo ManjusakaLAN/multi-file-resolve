@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 
-from core.enum.status import UserStatus
+from core.enum.user import UserStatus
 from schemas.date import CustomDatetime
 from schemas.permission import Role, Permission
 

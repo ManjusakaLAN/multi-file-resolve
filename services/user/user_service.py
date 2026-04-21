@@ -12,7 +12,7 @@ from core.exception.auth_exception import UserEditException
 from models.user import User as UserModel
 from schemas.general import PageResponse
 from schemas.user import UserCreate, User
-from core.enum.status import UserStatus
+from core.enum.user import UserStatus
 from services.auth.login_service import LoginService
 from util.auth_util import compare_password, valid_password, hash_password
 from util.db_util import paginate

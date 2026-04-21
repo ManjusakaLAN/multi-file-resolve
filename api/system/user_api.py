@@ -4,7 +4,7 @@ from api.deps import get_user_service, PermissionChecker
 from api.system import system_router
 from fastapi import Depends, Query, Body
 
-from core.enum.status import UserStatus
+from core.enum.user import UserStatus
 from schemas.general import Result, PageResponse
 from schemas.user import User, UserCreate, UserUpdate
 from services.user.user_service import UserService

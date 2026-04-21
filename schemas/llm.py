@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
-from core.enum.model import ModelConfigType
+from core.enum.model import ModelConfigType, ModelType
 from schemas.date import CustomDatetime
 
 
@@ -14,6 +14,7 @@ class LLMModelBase(BaseModel):
     model_code: str = Field(..., description="模型标识符", examples=["deepseek-chat"])
     provider: str = Field(..., description="供应商标识", examples=["DeepSeek"])
     default_api_base: Optional[str] = Field(None, description="默认API地址")
+    model_type: Optional[ModelType | str] = Field("llm", description="模型类型: llm/embedding/vision")
     config_type: Optional[ModelConfigType | str] = Field("system", description="配置来源: system/custom")
     status: str = Field("active", description="状态: active/banned")
 
@@ -22,9 +23,11 @@ class LLMModelCreate(LLMModelBase):
     """创建模型时的请求体"""
     pass
 
+
 class LLMModelUpdate(LLMModelBase):
     """更新模型时的请求体"""
     id: str = Field(..., description="模型ID")
+
 
 class LLMModelResponse(LLMModelBase):
     """模型信息返回（列表/详情）"""
@@ -51,11 +54,13 @@ class LLMCredentialCreate(LLMCredentialBase):
     # 可选：创建时直接绑定模型 ID 列表
     models: Optional[List[LLMModelResponse]] = Field(default=[], description="初始绑定的模型ID列表")
 
+
 class LLMCredentialUpdate(LLMCredentialBase):
     """用户更新 Key 时的请求体"""
     id: str = Field(..., description="凭据ID")
     api_key: Optional[str] = Field(None, description="API密钥明文")
     models: Optional[List[LLMModelResponse]] = Field(default=[], description="初始绑定的模型ID列表")
+
 
 class LLMCredentialResponse(LLMCredentialBase):
     """凭据信息返回（脱敏处理）"""
@@ -76,5 +81,3 @@ class LLMCredentialResponse(LLMCredentialBase):
 class LLMCredentialDetail(LLMCredentialResponse):
     """凭据详情，包含它所绑定的模型列表"""
     models: List[LLMModelResponse] = []
-
-

@@ -15,6 +15,7 @@ from services.auth.permission_service import PermissionService
 from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
+from services.contract.contract_service import ContractService
 from services.file.file_service import FileService
 from services.kb.kb_service import KBService
 from services.llm.credential_service import LLMCredentialService
@@ -149,9 +150,10 @@ async def get_mcp_service(
     """
     return McpService(db, mcp_manager)
 
+
 async def get_kb_service(
         db: AsyncSession = Depends(get_db),
-        milvus_client = Depends(get_milvus),
+        milvus_client=Depends(get_milvus),
 ):
     """
     获取知识库服务
@@ -160,6 +162,7 @@ async def get_kb_service(
     :return:
     """
     return KBService(db, milvus_client)
+
 
 async def get_model_service(
         db: AsyncSession = Depends(get_db),
@@ -171,6 +174,7 @@ async def get_model_service(
     """
     return LLMModelService(db)
 
+
 async def get_credential_service(
         db: AsyncSession = Depends(get_db),
 ):
@@ -180,6 +184,21 @@ async def get_credential_service(
     :return:
     """
     return LLMCredentialService(db)
+
+
+async def get_contract_service(
+        db: AsyncSession = Depends(get_db),
+        file_service: FileService = Depends(get_file_service),
+        minio_client: MinioClient = Depends(get_storage),
+):
+    """
+    获取合同服务
+    :param db:
+    :param file_service:
+    :param minio_client:
+    :return:
+    """
+    return ContractService(db, file_service, minio_client)
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:
     """

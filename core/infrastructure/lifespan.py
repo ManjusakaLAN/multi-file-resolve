@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from core.config import settings
 from core.infrastructure.database import engine, reset_database, AsyncSessionLocal
 from core.infrastructure.cache import redis_manager, get_redis_client
-from scheduler.tasks import cleanup_expired_users
+from scheduler.tasks import execute_contract_preview
 from services.init.init_service import InitService
 from api.deps import get_storage, get_milvus
 
@@ -42,11 +42,12 @@ async def lifespan(app: FastAPI):
 
     # 启动定时任务
     scheduler = AsyncIOScheduler()
-    # 使用 interval 触发器，设置 seconds=10
+    # 使用 interval 触发器，设置 seconds=10 每十秒 执行一次合同预审察任务
     scheduler.add_job(
-        cleanup_expired_users,
+        execute_contract_preview,
         "interval",
-        seconds=10
+        seconds=10,
+        max_instances=5
     )
     scheduler.start()
     print("🚀 基础设施已就绪，定时任务已启动")

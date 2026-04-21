@@ -21,6 +21,7 @@ class LLMModel(Base):
     model_name = Column(String(64), nullable=False, comment="展示名称。例如：DeepSeek 满血版, GPT-4o 预览版")
     model_code = Column(String(64), nullable=False, comment="模型标识符。例如：deepseek-chat, gpt-4o, claude-3-5-sonnet")
     provider = Column(String(32), nullable=False, index=True, comment="供应商标识。例如：DeepSeek, OpenAI, AliCloud, Anthropic")
+    model_type = Column(String(32), default='llm',nullable=False, comment="模型类型。llm 大语言模型 embedding 嵌入模型 vision 视觉模型")
     default_api_base = Column(String(255), nullable=True, comment="默认API地址。例如：https://api.deepseek.com")
     # 配置类型
     config_type = Column(String(12), default='system', comment="配置来源。system:系统内置(如官方GPT4); custom:用户私有(如接入本地Ollama)")

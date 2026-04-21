@@ -75,6 +75,7 @@ class LLMModelService:
             provider: Optional[str] = None,
             config_type: Optional[str] = None,
             user_id: Optional[str] = None,
+            model_type: Optional[str] = None,
             page: int = 1,
             page_size: int = 10
     ) -> PageResponse:
@@ -91,6 +92,8 @@ class LLMModelService:
         stmt = stmt.where(or_(*visibility_filters))
 
         # 动态条件过滤
+        if model_type:
+            stmt = stmt.where(LLMModel.model_type.__eq__(model_type))
         if model_name:
             stmt = stmt.where(LLMModel.model_name.contains(model_name))
         if model_code:
@@ -109,6 +112,7 @@ class LLMModelService:
             model_code: Optional[str] = None,
             provider: Optional[str] = None,
             user_id: Optional[str] = None,
+            model_type: Optional[str] = None
     ):
         """
         分页查询模型列表：系统模型 + 用户自建模型
@@ -122,6 +126,8 @@ class LLMModelService:
         stmt = stmt.where(or_(*visibility_filters))
 
         # 动态条件过滤
+        if model_type:
+            stmt = stmt.where(LLMModel.model_type.__eq__(model_type))
         if model_name:
             stmt = stmt.where(LLMModel.model_name.contains(model_name))
         if model_code:

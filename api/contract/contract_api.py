@@ -1,19 +1,24 @@
-from api.deps import get_file_service
+from api.deps import get_contract_service
 from api.contract import contract_router
 from fastapi import UploadFile, File, Depends, Request
 
-from schemas.file import FileRecordResponse
+from schemas.contract import ContractReviewTaskResponse
 from schemas.general import Result
-from services.file.file_service import FileService
+from services.contract.contract_service import ContractService
 
 
-@contract_router.post("/preview", response_model=Result[str])
+@contract_router.post("/upload", response_model=Result[ContractReviewTaskResponse])
 async def upload_file(
         request: Request,
         file: UploadFile = File(...),
-        file_service: FileService = Depends(get_file_service),
+        contract_service: ContractService = Depends(get_contract_service),
 ):
-
-    await file_service.file_upload_and_convert(file, request.state.user_id)
-
-    return Result.success(message="上传成功", data=await file_service.upload_file(file, request.state.user_id))
+    """
+    合同上传并生成审核任务
+    :param request:
+    :param file:
+    :param contract_service:
+    :return:
+    """
+    return Result.success(message="上传成功",
+                          data=await contract_service.generate_contract_review_task(file, request.state.user_id))
