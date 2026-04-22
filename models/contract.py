@@ -12,7 +12,7 @@ class ContractReviewTask(Base):
     file_name = Column(String(256), comment="文件名称")
     contract_name = Column(String(256), comment="合同名称")
     review_status = Column(String(100),default="waiting_pre_review",
-                           comment="审查状态:waiting_pre_review 等待预审查中 pre_review 预审查中 pre_review_failed 预审查失败 waiting_review 待审查 resolving 处理中 finish 完成 failed 失败")
+                           comment="审查状态:waiting_pre_review 等待预审查中 pre_review 预审查中 pre_review_failed 预审查失败 pre_review_finish 预审查完成 waiting_review 待审查 resolving 处理中 finish 完成 failed 失败")
     high_risk = Column(Integer, default=0, comment="高风险数量")
     medium_risk = Column(Integer, default=0, comment="中风险数量")
     low_risk = Column(Integer, default=0, comment="低风险数量")

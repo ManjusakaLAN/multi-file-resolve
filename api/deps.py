@@ -18,6 +18,7 @@ from fastapi import Request, Depends, HTTPException
 from services.contract.contract_service import ContractService
 from services.file.file_service import FileService
 from services.kb.kb_service import KBService
+from services.contract.contract_agent_service import ContractAgentService
 from services.llm.credential_service import LLMCredentialService
 from services.llm.model_service import LLMModelService
 from services.mcp.mcp_manager import MCPManager
@@ -186,19 +187,36 @@ async def get_credential_service(
     return LLMCredentialService(db)
 
 
+async def get_contract_agent_service(
+        db: AsyncSession = Depends(get_db),
+):
+    """
+    获取模型服务
+    :param db:
+    :return:
+    """
+    return ContractAgentService(db)
+
+
 async def get_contract_service(
         db: AsyncSession = Depends(get_db),
         file_service: FileService = Depends(get_file_service),
         minio_client: MinioClient = Depends(get_storage),
+        contract_agent_service: ContractAgentService = Depends(get_contract_agent_service),
+        model_service: LLMModelService = Depends(get_model_service),
 ):
     """
     获取合同服务
+    :param model_service:
+    :param contract_agent_service:
     :param db:
     :param file_service:
     :param minio_client:
     :return:
     """
-    return ContractService(db, file_service, minio_client)
+    return ContractService(db, file_service, contract_agent_service, model_service, minio_client)
+
+
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:
     """

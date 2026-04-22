@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 
 from core.enum.contract import ReviewRecommendation, ReviewStatus, StandPoint, ReviewCriteria
 
@@ -70,5 +70,14 @@ class ContractReviewTaskResponse(ContractReviewTaskBase):
             return "未知状态"
         return ReviewStatus.get_desc(self.review_status)
 
-    class Config:
-        from_attributes = True
+
+# 合同 预审查 schema
+class ContractPreReviewInfoResponse(BaseModel):
+    """
+    合同预审查结果
+    """
+    is_contract: bool = Field(..., description="是否是一个合同文件")
+    contract_name: Optional[str] = Field(None, description="合同名称")
+    part_a: Optional[str] = Field(None, description="甲方名称")
+    part_b: Optional[str] = Field(None, description="乙方名称")
+

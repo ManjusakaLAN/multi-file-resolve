@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
-from core.enum.model import ModelConfigType, ModelType
+from core.enum.model import ModelConfigType, ModelType, ModelProvider
 from schemas.date import CustomDatetime
 
 
@@ -81,3 +81,11 @@ class LLMCredentialResponse(LLMCredentialBase):
 class LLMCredentialDetail(LLMCredentialResponse):
     """凭据详情，包含它所绑定的模型列表"""
     models: List[LLMModelResponse] = []
+
+class ModelInvokeInfo(BaseModel):
+    """模型调用信息"""
+    model_id: str = Field(default= "", description="模型ID")
+    base_url: str = Field(default= "", description="API调用地址")
+    api_key: str = Field(default= "", description="API密钥")
+    provider: ModelProvider | str = Field(default= "", description="模型类型")
+    model_type: ModelType | str= Field(default= "", description="模型类型")

@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 async def stmt_condition_combine(user_id: str, name: str, provider: str):
-    stmt = select(LLMCredential).where(LLMCredential.user_id.__eq__(user_id))
+    # stmt = select(LLMCredential).where(LLMCredential.user_id.__eq__(user_id))
+    stmt = select(LLMCredential)
 
     if name:
         stmt = stmt.where(LLMCredential.name.contains(name))
@@ -34,22 +35,22 @@ class LLMCredentialService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_credential(self, user_id: str, obj_in: LLMCredentialCreate) -> LLMCredential:
+    async def create_credential(self, user_id: str, credential_create: LLMCredentialCreate) -> LLMCredential:
         """
         创建凭据，并可选地绑定模型
         """
         new_credential = LLMCredential(
             id=str(uuid.uuid4()),
             user_id=user_id,
-            name=obj_in.name,
-            provider=obj_in.provider,
-            api_key=cipher_client.encrypt(obj_in.api_key),  # 建议在此处调用加密工具类，如 cipher.encrypt(obj_in.api_key)
-            api_base=obj_in.api_base
+            name=credential_create.name,
+            provider=credential_create.provider,
+            api_key=cipher_client.encrypt(credential_create.api_key),  # 建议在此处调用加密工具类，如 cipher.encrypt(obj_in.api_key)
+            api_base=credential_create.api_base
         )
 
         # 处理初始模型绑定
-        if obj_in.models:
-            model_ids = [model.id for model in obj_in.models]
+        if credential_create.models:
+            model_ids = [model.id for model in credential_create.models]
 
             stmt = select(LLMModel).where(LLMModel.id.in_(model_ids))
             result = await self.db.execute(stmt)
@@ -60,7 +61,7 @@ class LLMCredentialService:
         try:
             await self.db.commit()
             await self.db.refresh(new_credential)
-            new_credential.api_key = self.mask_api_key(obj_in.api_key)
+            new_credential.api_key = self.mask_api_key(credential_create.api_key)
             return new_credential
         except Exception as e:
             await self.db.rollback()
@@ -107,10 +108,15 @@ class LLMCredentialService:
         """
         获取凭据详情（带权限校验）
         """
+        # stmt = (select(LLMCredential)
+        # .options(selectinload(LLMCredential.models))  # 关键：预加载多对多关系
+        # .where(
+        #     and_(LLMCredential.id == credential_id, LLMCredential.user_id == user_id)
+        # ))
         stmt = (select(LLMCredential)
         .options(selectinload(LLMCredential.models))  # 关键：预加载多对多关系
         .where(
-            and_(LLMCredential.id == credential_id, LLMCredential.user_id == user_id)
+            and_(LLMCredential.id == credential_id)
         ))
         result = await self.db.execute(stmt)
         item = result.scalar_one_or_none()

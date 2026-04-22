@@ -1,20 +1,26 @@
 import logging
+from datetime import datetime
 from typing import Optional, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.enum.contract import ReviewStatus, ReviewCriteria, ReviewRecommendation
 from core.enum.kb import KBType, KBOpenStatus
 from core.enum.mcp import McpType, McpConnectedStatus
-from core.enum.model import ModelProvider, ModelConfigType
+from core.enum.model import ModelProvider, ModelConfigType, ModelType
 from core.infrastructure.vector_db import MilvusVectorDB
+from models.llm import LLMModel
 from models.user import User, Role, Permission
+from schemas.llm import LLMModelCreate, LLMCredentialCreate, LLMModelResponse
 from schemas.user import Role as RoleSchema
 from schemas.dict import DictCreate
 from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
 from services.auth.permission_service import PermissionService
 from services.kb.kb_service import KBService
+from services.llm.credential_service import LLMCredentialService
+from services.llm.model_service import LLMModelService
 from services.system.dict_service import DictService
 
 logger = logging.getLogger(__name__)
@@ -27,6 +33,8 @@ class InitService:
         self.login_service = LoginService(db, redis)
         self.dict_service = DictService(db)
         self.kb_service = KBService(db, milvus_client)
+        self.model_service = LLMModelService(db)
+        self.credential_service = LLMCredentialService(db)
 
     async def init_basic_data(self):
         """核心初始化逻辑"""
@@ -50,6 +58,9 @@ class InitService:
 
             # 6. 新增系统知识库
             await self._init_system_knowledge_base()
+
+            # 7. 新增系统模型 和 凭证
+            await self._init_system_model_and_credential()
 
             logger.info("✅ 项目基础数据初始化全量完成")
         except Exception as e:
@@ -260,6 +271,46 @@ class InitService:
                     is_system=1
                 ) for idx, item in enumerate(KBOpenStatus)
             ],
+            # 合同审查状态字典(contract_review_status)
+            *[
+                DictCreate(
+                    dict_code="contract_review_status",
+                    label=ReviewStatus.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ReviewStatus)
+            ],
+            # 模型类型
+            *[
+                DictCreate(
+                    dict_code="model_type",
+                    label=ModelType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ModelType)
+            ],
+            # 审查立场 ReviewCriteria
+            *[
+                DictCreate(
+                    dict_code="review_criteria",
+                    label=ReviewCriteria.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ReviewCriteria)
+            ],
+            # 审查建议 ReviewRecommendation
+            *[
+                DictCreate(
+                    dict_code="review_recommendation",
+                    label=ReviewRecommendation.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ReviewRecommendation)
+            ]
         ]
 
         for dict_create in dicts:
@@ -303,3 +354,42 @@ class InitService:
             permit_roles=[user_role],
             user_id=user_id
         )
+
+    async def _init_system_model_and_credential(self):
+
+        llm_model = LLMModel(
+            model_name="Deepseek3.2",
+            model_code="deepseek-chat",
+            provider=ModelProvider.DEEPSEEK,
+            config_type="system",
+            status="active",
+            default_api_base="https://api.deepseek.com/v1",
+            model_type=ModelType.LLM
+        )
+
+        self.db.add(llm_model)
+        await self.db.commit()
+        await self.db.refresh(llm_model)
+
+        await self.credential_service.create_credential("",
+                                                        LLMCredentialCreate(
+                                                            name="deepseek凭据",
+                                                            provider="deepseek",
+                                                            api_key="sk-edbe2c94099b45b2af70516816b7671a",
+                                                            api_base="https://api.deepseek.com/v1",
+                                                            models=[
+                                                                LLMModelResponse(
+                                                                    model_name="Deepseek大模型",
+                                                                    model_code="deepseek-chat",
+                                                                    model_type=ModelType.LLM,
+                                                                    provider=ModelProvider.DEEPSEEK,
+                                                                    default_api_base="https://api.deepseek.com/v1",
+                                                                    created_by="",
+                                                                    status="active",
+                                                                    id=llm_model.id,
+                                                                    created_at=datetime.now(),
+                                                                    config_type="system",
+                                                                )
+                                                            ]
+                                                        )
+                                                        )

@@ -5,19 +5,31 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
+
+from core.config import settings
 from core.enum.contract import ReviewStatus
+from core.exception.contract import ContractException
 from core.infrastructure.storage import MinioClient
+from schemas.general import PageResponse
+from services.contract.contract_agent_service import ContractAgentService
 from services.file.file_service import FileService
+from services.llm.model_service import LLMModelService
 from util import file_util, ocr_util, slice_util
 from models.contract import ContractReviewTask, ContractSliceContent
+from util.db_util import paginate
 
 logger = logging.getLogger(__name__)
 
 
 class ContractService:
-    def __init__(self, db: AsyncSession, file_service: FileService, minio_client: MinioClient):
+    def __init__(self, db: AsyncSession, file_service: FileService,
+                 contract_agent_service: ContractAgentService,
+                 model_service: LLMModelService,
+                 minio_client: MinioClient):
         self.db = db
         self.file_service = file_service
+        self.contract_agent_service = contract_agent_service
+        self.model_service = model_service
         self.minio_client = minio_client
 
     async def generate_contract_review_task(self, file: UploadFile, user_id: str) -> ContractReviewTask:
@@ -101,7 +113,7 @@ class ContractService:
                 md_path = await ocr_util.invoke_mineru_to_markdown(
                     file_path=str(pdf_path),
                     save_directory=str(task_dir_output),
-                    api_url="http://192.168.31.155:8000/file_parse"
+                    api_url=settings.MINERU_API_URL
                 )
                 logger.info(f"文件{contract_review_task.file_name}的OCR识别任务执行完成")
                 contract_review_task.md_file_path = md_path
@@ -147,6 +159,10 @@ class ContractService:
                 logger.info(f"文件{contract_review_task.file_name}的切片任务执行完成")
 
             # 开始进行预审察任务
+            logger.info(f"开始执行文件{contract_review_task.file_name}的预审任务")
+            model_invoke_info = await self.model_service.get_model_invoke_info()
+            await self.contract_agent_service.contract_judge_agent(model_invoke_info, contract_review_task.id)
+            logger.info(f"文件{contract_review_task.file_name}的预审任务执行完成")
 
         except Exception as e:
             logger.error(f"文件{contract_review_task.file_name}的预审查任务执行失败: {e}")
@@ -155,3 +171,60 @@ class ContractService:
                 contract_review_task.error_message = str(e)
                 await self.db.commit()
             return
+
+    async def get_review_task_page_list(self, file_name: str, contract_name: str, review_status: str, page: int,
+                                        page_size: int) -> PageResponse:
+        """
+        分页获取合同审查任务
+        :param file_name: 文件名称
+        :param contract_name: 合同名称
+        :param review_status: 审查状态
+        :param page:
+        :param page_size:
+        :return:
+        """
+        stmt = select(ContractReviewTask)
+
+        if file_name:
+            stmt = stmt.where(ContractReviewTask.file_name.contains(file_name))
+        if contract_name:
+            stmt = stmt.where(ContractReviewTask.contract_name.contains(contract_name))
+        if review_status:
+            stmt = stmt.where(ContractReviewTask.review_status == review_status)
+
+        stmt.order_by(ContractReviewTask.created_at.desc())
+
+        return await paginate(self.db, stmt, page, page_size)
+
+    async def retry(self, contract_id) -> ContractReviewTask:
+        """
+        重试任务
+        如果预审查失败 则重新预审查
+        如果审查任务失败 则重新审查
+        :param contract_id:
+        :return:
+        """
+        stmt = select(ContractReviewTask).where(ContractReviewTask.id == contract_id)
+        contract_review_task = (await self.db.execute(stmt)).scalars().first()
+        if not contract_review_task:
+            raise ContractException("合同不存在")
+
+        review_status = contract_review_task.review_status
+        if review_status == ReviewStatus.PRE_REVIEW_FAILED:
+            contract_review_task.review_status = ReviewStatus.WAITING_PRE_REVIEW
+        elif review_status == ReviewStatus.FAILED:
+            contract_review_task.review_status = ReviewStatus.WAITING_REVIEW
+        else:
+            raise ContractException("未失败的合同审查任务无需重试")
+        await self.db.commit()
+        await self.db.refresh(contract_review_task)
+        return contract_review_task
+
+    async def get_review_task_detail(self, contract_id: str) -> ContractReviewTask:
+        """
+        获取审查任务详情
+        :param contract_id:
+        :return:
+        """
+        stmt = select(ContractReviewTask).where(ContractReviewTask.id == contract_id)
+        return (await self.db.execute(stmt)).scalars().first()

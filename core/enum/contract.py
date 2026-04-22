@@ -4,6 +4,7 @@ class ReviewStatus(StrEnum):
     WAITING_PRE_REVIEW = "waiting_pre_review"
     PRE_REVIEW = "pre_review"
     PRE_REVIEW_FAILED = "pre_review_failed"
+    PRE_REVIEW_FINISH = "pre_review_finish"
     WAITING_REVIEW = "waiting_review"
     RESOLVING = "resolving"
     FINISH = "finish"
@@ -15,6 +16,7 @@ class ReviewStatus(StrEnum):
             cls.WAITING_PRE_REVIEW: "等待预审查",
             cls.PRE_REVIEW: "预审查中",
             cls.PRE_REVIEW_FAILED: "预审查失败",
+            cls.PRE_REVIEW_FINISH: "预审查完成",
             cls.WAITING_REVIEW: "待审查",
             cls.RESOLVING: "处理中",
             cls.FINISH: "完成",
