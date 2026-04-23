@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
-from core.enum.contract import ReviewRecommendation, ReviewStatus, StandPoint, ReviewCriteria
+from core.enum.contract import ReviewRecommendation, ReviewStatus, StandPoint, ReviewCriteria, RiskLevel
+from schemas.agent_tool import Elements, ContractOutline
 
 
 class ContractReviewTaskBase(BaseModel):
@@ -25,6 +26,8 @@ class ContractReviewTaskBase(BaseModel):
     is_contract: int = 0
     contract_overview: Optional[str] = None
     error_message: Optional[str] = None
+    outlines: Optional[str | List[ContractOutline]] =  None
+    elements: Optional[str | Elements] = None
 
 
 # --- 创建请求 Schema ---
@@ -35,15 +38,16 @@ class ContractReviewTaskCreate(ContractReviewTaskBase):
 # --- 更新请求 Schema ---
 class ContractReviewTaskUpdate(BaseModel):
     # 全部设为 Optional，且包含空值拦截逻辑
+    id: str = Field(..., description="主键ID")
     file_name: Optional[str] = None
     contract_name: Optional[str] = None
-    review_status: Optional[ReviewStatus] = None
+    review_status: Optional[ReviewStatus | str] = None
     high_risk: Optional[int] = None
     medium_risk: Optional[int] = None
     low_risk: Optional[int] = None
-    review_recommendation: Optional[ReviewRecommendation] = None
-    stand_point: Optional[StandPoint] = None
-    review_criteria: Optional[ReviewCriteria] = None
+    review_recommendation: Optional[ReviewRecommendation | str] = None
+    stand_point: Optional[StandPoint | str] = None
+    review_criteria: Optional[ReviewCriteria | str] = None
     contract_type: Optional[str] = None
     part_a_name: Optional[str] = None
     part_b_name: Optional[str] = None
@@ -81,3 +85,41 @@ class ContractPreReviewInfoResponse(BaseModel):
     part_a: Optional[str] = Field(None, description="甲方名称")
     part_b: Optional[str] = Field(None, description="乙方名称")
 
+
+# 1. 共享属性基类
+class RiskBase(BaseModel):
+    risk_level: Optional[RiskLevel | str] = Field(..., description="风险等级：high高、medium中、low低")
+    associated_clause: str = Field(..., description="关联条款名称/章节号")
+    original_excerpt: str = Field(..., description="合同原文摘录")
+    risk_description: str = Field(..., description="风险详细说明")
+    potential_impact: str = Field(..., description="潜在法律或经济影响")
+    modification_suggestion: str = Field(..., description="针对性的修改建议")
+    slice_id: Optional[str] = Field(None, description="所属切片ID")
+
+# 2. 供 LangGraph 结构化提取使用的 Schema
+# 注意：提取时不需要 ID 和 TaskID，由后端逻辑自动补充
+class RiskCreate(RiskBase):
+    """
+    创建风险项时的入参。
+    LLM 提取出这些字段后，后端会关联 contract_review_task_id 并存入数据库。
+    """
+    pass
+
+# 4. 更新风险信息时使用的 Schema (PATCH)
+class RiskUpdate(BaseModel):
+    """
+    手动修正风险项时的入参。
+    """
+    risk_level: Optional[RiskLevel | str] = Field(None, description="风险等级")
+    associated_clause: Optional[str] = Field(None, description="关联条款")
+    risk_description: Optional[str] = Field(None, description="风险说明")
+    modification_suggestion: Optional[str] = Field(None, description="修改建议")
+
+# 5. 接口返回详细信息时使用的 Schema (Response)
+class RiskResponse(RiskBase):
+    """
+    返回给前端的完整风险详情。
+    """
+    id: str = Field(..., description="风险记录唯一ID")
+    contract_review_task_id: str = Field(..., description="关联的审查任务ID")
+    created_time: datetime = Field(..., description="识别时间")

@@ -2,14 +2,15 @@ import logging
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from core.config import settings
-from core.enum.contract import ReviewStatus
+from core.enum.contract import ReviewStatus, ReviewStage
 from core.exception.contract import ContractException
 from core.infrastructure.storage import MinioClient
+from schemas.contract import ContractReviewTaskUpdate
 from schemas.general import PageResponse
 from services.contract.contract_agent_service import ContractAgentService
 from services.file.file_service import FileService
@@ -228,3 +229,78 @@ class ContractService:
         """
         stmt = select(ContractReviewTask).where(ContractReviewTask.id == contract_id)
         return (await self.db.execute(stmt)).scalars().first()
+
+    async def delete_contract(self, contract_id: str):
+        # 1. 查询主体是否存在
+        stmt = select(ContractReviewTask).where(ContractReviewTask.id == contract_id)
+        contract_review_task = (await self.db.execute(stmt)).scalars().first()
+
+        if not contract_review_task:
+            raise ContractException("合同不存在")
+
+        if contract_review_task.review_status in [ReviewStatus.PRE_REVIEW, ReviewStatus.RESOLVING]:
+            raise ContractException("合同正在处理中，请稍后再试")
+
+        # 2. 批量删除切片内容 (直接执行 delete 语句)
+        slice_del_stmt = delete(ContractSliceContent).where(
+            ContractSliceContent.contract_review_task_id == contract_id
+        )
+        await self.db.execute(slice_del_stmt)
+
+        # 3. 删除主体
+        await self.db.delete(contract_review_task)
+
+        # 4. 提交
+        await self.db.commit()
+
+    async def do_contract_review(self, contract_review_task: ContractReviewTaskUpdate):
+        """
+        ce
+        :param contract_review_task:
+        :return:
+        """
+        contract_review_task_id = contract_review_task.id
+        stand_point = contract_review_task.stand_point
+        review_criteria = contract_review_task.review_criteria
+
+        stmt = select(ContractReviewTask).where(ContractReviewTask.id == contract_review_task_id)
+        contract_review_task = (await self.db.execute(stmt)).scalars().first()
+
+        contract_review_task.review_status = ReviewStatus.WAITING_REVIEW
+        contract_review_task.review_criteria = review_criteria
+        contract_review_task.stand_point = stand_point
+
+        await self.db.commit()
+        await self.db.refresh(contract_review_task)
+        return contract_review_task
+
+    async def contract_review(self):
+        """
+        执行合同审查
+        :return:
+        """
+        stmt = select(ContractReviewTask).where(
+            ContractReviewTask.review_status == ReviewStatus.WAITING_REVIEW
+        )
+        # 找到一个 待处理的合同
+        contract_review_task = (await self.db.execute(stmt)).scalars().first()
+        if not contract_review_task:
+            return
+
+        logger.info(f"开始处理合同{contract_review_task.file_name}的审查任务")
+        contract_review_task.review_status = ReviewStatus.RESOLVING
+        await self.db.commit()
+
+        model_invoke_info = await self.model_service.get_model_invoke_info()
+
+        # 执行合同审查 提取要素、大纲生成摘要
+        await self.contract_agent_service.contract_core_content_compression_and_element_pick_up(
+            model_invoke_info,
+            contract_review_task.id,
+        )
+
+        # 执行风险扫描
+        await self.contract_agent_service.contract_risk_scan(
+            model_invoke_info,
+            contract_review_task.id,
+        )

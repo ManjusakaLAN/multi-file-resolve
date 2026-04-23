@@ -19,3 +19,17 @@ async def execute_contract_preview():
             minio_client=minio_client
         )
         await contract_service.contract_preview()
+
+async def execute_contract_review():
+    async with AsyncSessionLocal() as db:
+        minio_client = await get_storage()
+        file_service = FileService(db, minio_client)
+        model_service = LLMModelService(db)
+        contract_agent_service = ContractAgentService(db)
+        contract_service = await get_contract_service(
+            db=db,
+            file_service=file_service,
+            contract_agent_service=contract_agent_service,
+            model_service=model_service,
+        )
+        await contract_service.contract_review()

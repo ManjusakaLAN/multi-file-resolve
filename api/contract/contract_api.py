@@ -7,14 +7,15 @@ from api.contract import contract_router
 from fastapi import UploadFile, File, Depends, Request, Body
 
 from core.enum.contract import ReviewStatus
-from schemas.contract import ContractReviewTaskResponse, ContractPreReviewInfoResponse
+from schemas.contract import ContractReviewTaskResponse, ContractPreReviewInfoResponse, ContractReviewTaskUpdate
 from schemas.general import Result, PageResponse
 from services.contract.contract_service import ContractService
 from services.contract.contract_agent_service import ContractAgentService
 from services.llm.model_service import LLMModelService
 
 
-@contract_router.post("/upload", response_model=Result[ContractReviewTaskResponse])
+@contract_router.post("/upload", response_model=Result[ContractReviewTaskResponse],
+                      description="合同上传并生成审核任务")
 async def upload_file(
         request: Request,
         file: UploadFile = File(...),
@@ -31,7 +32,8 @@ async def upload_file(
                           data=await contract_service.generate_contract_review_task(file, request.state.user_id))
 
 
-@contract_router.get("/review_task/page_list", response_model=PageResponse[ContractReviewTaskResponse])
+@contract_router.get("/review_task/page_list", response_model=PageResponse[ContractReviewTaskResponse],
+                     description="合同审查任务列表")
 async def get_review_task_page_list(
         file_name: str = "",
         contract_name: str = "",
@@ -53,50 +55,77 @@ async def get_review_task_page_list(
     return await contract_service.get_review_task_page_list(file_name, contract_name, review_status, page, page_size)
 
 
-@contract_router.get("/review_task/detail", response_model=Result[ContractReviewTaskResponse])
+@contract_router.get("/review_task/detail", response_model=Result[ContractReviewTaskResponse],
+                     description="合同审查任务详情")
 async def get_review_task_detail(
-        contract_id: str = Query(..., description="合同ID"),
+        contract_review_task_id: str = Query(..., description="合同ID"),
         contract_service: ContractService = Depends(get_contract_service),
 ):
     """
     获取合同审查任务详情
-    :param contract_id:
+    :param contract_review_task_id:
     :param contract_service:
     :return:
     """
     return Result.success(message="获取合同审查任务详情成功",
-                          data=await contract_service.get_review_task_detail(contract_id))
+                          data=await contract_service.get_review_task_detail(contract_review_task_id))
 
 
-@contract_router.post("/retry", response_model=Result[ContractPreReviewInfoResponse])
+@contract_router.post("/retry", response_model=Result[ContractPreReviewInfoResponse], description="重试合同审查任务")
 async def retry_contract(
-        contract_id: str = Body(..., embed=True),
+        contract_review_task_id: str = Body(..., embed=True),
         contract_service: ContractService = Depends(get_contract_service),
 ):
     """
     重试任务
-    :param contract_id:
+    :param contract_review_task_id:
     :param contract_service:
     :return:
     """
-    return Result.success(message="重新生成预审任务成功",
-                          data=await contract_service.retry(contract_id))
+    return Result.success(message="任务进入重试队列，请稍等",
+                          data=await contract_service.retry(contract_review_task_id))
 
 
-@contract_router.post("/review", response_model=Result[ContractPreReviewInfoResponse])
-async def review_contract(
-        contract_id: str = Body(..., embed=True),
-        model_service: LLMModelService = Depends(get_model_service),
-        agent_service: ContractAgentService = Depends(get_contract_agent_service),
+@contract_router.delete("/delete", response_model=Result[ContractPreReviewInfoResponse], description="合同审查任务删除")
+async def delete_contract(
+        contract_review_task_id: str = Body(..., embed=True),
+        contract_service: ContractService = Depends(get_contract_service),
 ):
     """
-        合同审核
-    :param agent_service:
-    :param contract_id:
+    合同删除
+    :param contract_review_task_id:
+    :param contract_service:
+    :return:
+    """
+    return Result.success(message="删除成功",
+                          data=await contract_service.delete_contract(contract_review_task_id))
+
+
+@contract_router.post("/review", response_model=Result[ContractReviewTaskResponse])
+async def review_contract(
+        contract_review_task: ContractReviewTaskUpdate,
+        contract_service: ContractService = Depends(get_contract_service),
+):
+    """
+    合同审核
+    :param contract_review_task:
+    :param contract_service:
+    :return:
+    """
+    return Result.success(message="合同已进入审查队列，请耐心等待...",
+                          data=await contract_service.do_contract_review(contract_review_task))
+
+@contract_router.get("/result", response_model=Result[ContractReviewTaskResponse])
+async def review_contract(
+        contract_review_task_id: str,
+        model_service: LLMModelService = Depends(get_model_service),
+
+):
+    """
+    合同审核
+    :param contract_review_task_id:
     :param model_service:
     :return:
     """
-    model_invoke_info = await model_service.get_model_invoke_info()
     return Result.success(message="审核成功",
-                          data=await agent_service.contract_judge_agent(model_invoke_info, contract_id))
-    # data=await agent_service.contract_core_content_compression_and_element_pick_up(model_invoke_info, contract_id))
+                          data=await model_service.get_review_result(contract_review_task_id))

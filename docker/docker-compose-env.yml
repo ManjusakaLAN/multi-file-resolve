@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+
+  # 文件存储服务
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: ai-minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    environment:
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: hxxc!@#1309
+    volumes:
+      - /docker/minio/data:/data
+    command: server /data --console-address ":9090" -address ":9000"
+    restart: always
+    networks:
+      - ai-knowledge-network
+
+  # 缓存中间件
+  redis:
+    image: redis:7
+    container_name: ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - /docker/redis:/data
+    command: redis-server --requirepass hxxc!@#1309
+    restart: always
+    networks:
+      - ai-knowledge-network
+
+  # 数据库
+  postgresql:
+    image: postgres:16-alpine
+    container_name: ai-postgres
+    environment:
+      - POSTGRES_USER=root          # 数据库用户名
+      - POSTGRES_PASSWORD=hxxc!@#1309   # 数据库密码
+      - POSTGRES_DB=sirius_file           # 初始创建的数据库名
+      - TZ=Asia/Shanghai                # 设置时区
+#    volumes:
+#      - ./data/postgres:/var/lib/postgresql/data  # 挂载数据持久化目录
+    ports:
+      - "5432:5432"
+    networks:
+      - ai-knowledge-network
+    healthcheck:                         # 健康检查，确保数据库准备就绪
+      test: ["CMD-SHELL", "pg_isready -U sirius_file"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always                      # 容器退出时总是自动重启
+
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - /docker/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ai-knowledge-network
+
+  # 向量数据库
+  milvus_standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.5.14
+    command: [ "milvus", "run", "standalone" ]
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: none
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+    volumes:
+      - /docker/milvus/milvus_data:/var/lib/milvus
+      - /docker/milvus/milvus_configs:/milvus/configs
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+    networks:
+      - ai-knowledge-network
+
+  # 向量数据库管理web页面
+  milvus_web_manager:
+    image: zilliz/attu:v2.5
+    container_name: milvus-attu
+    ports:
+      - "8000:3000"
+    environment:
+      - MILVUS_URL=localhost:19530
+    networks:
+      - ai-knowledge-network
+
+  # 代理服务
+  nginx:
+    image: nginx:latest
+    container_name: echo-nginx
+    ports:
+      - "80:80"
+      - "81:81"
+    volumes:
+      - /docker/nginx/conf:/etc/nginx/
+      - /docker/nginx/html:/usr/share/nginx/html
+    restart: always
+    networks:
+      - ai-knowledge-network
+networks:
+  ai-knowledge-network:
+    name: ai-knowledge-network
+    driver: bridge

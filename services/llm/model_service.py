@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from typing import Optional
@@ -11,7 +12,9 @@ from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
 from core.enum.model import ModelType
+from core.exception.contract import ContractException
 from core.exception.llm_exception import ModelException
+from models.contract import ContractReviewTask
 from models.llm import LLMModel, model_credential_m2m, LLMCredential
 from schemas.general import PageResponse
 from schemas.llm import LLMModelCreate, LLMModelUpdate, ModelInvokeInfo
@@ -258,3 +261,15 @@ class LLMModelService:
             await self.db.rollback()
             logger.error(f"删除模型失败: {e}")
             raise ModelException(status_code=500, message="数据库删除失败")
+
+    async def get_review_result(self, contract_review_task_id: str):
+        stmt = select(ContractReviewTask).where(ContractReviewTask.id.__eq__(contract_review_task_id))
+        result = await self.db.execute(stmt)
+        contract_review_task = result.scalar_one_or_none()
+        if not contract_review_task:
+            raise ContractException(status_code=404, message="合同不存在")
+
+        contract_review_task.outlines = json.loads(contract_review_task.outlines)
+        contract_review_task.elements = json.loads(contract_review_task.elements)
+
+        return contract_review_task
