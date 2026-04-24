@@ -78,6 +78,8 @@ class FileService:
         clean_name = re.sub(r'[/\\:*?"<>|]', '', base_name)
         if len(clean_name) > 200:
             clean_name = clean_name[:200]
+            # 去除空格
+            clean_name = clean_name.replace(" ", "")
         final_filename = f"{clean_name}{extension}"
 
         # 5. 生成存储路径

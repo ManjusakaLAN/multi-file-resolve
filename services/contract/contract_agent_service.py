@@ -203,7 +203,7 @@ class ContractAgentService:
         print(state)
         return state
 
-    async def contract_risk_scan(self, model_invoke_info: ModelInvokeInfo, contract_review_task_id: str, outlines: str):
+    async def contract_risk_scan(self, model_invoke_info: ModelInvokeInfo, contract_review_task_id: str, outlines: str) -> RiskScanState:
         """
         合同风险扫描
         :param outlines:
@@ -241,7 +241,7 @@ class ContractAgentService:
         risk_state = await risk_scan_workflow.ainvoke(risk_state, config=config)
 
         risk_state = RiskScanState(**risk_state)
-
+        logger.info(f"风险扫描结果:{risk_state}")
         scan_risks = risk_state.scan_risks
         contract_risks = []
         for scan_risk in scan_risks:
@@ -259,3 +259,5 @@ class ContractAgentService:
         self.db.add_all(contract_risks)
         logger.info(f"风险点扫描记录完成: {contract_risks}")
         await self.db.commit()
+
+        return risk_state

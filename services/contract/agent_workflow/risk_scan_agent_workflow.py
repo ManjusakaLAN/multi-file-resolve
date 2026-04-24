@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, END, StateGraph
 
 from langchain_openai import ChatOpenAI
-from schemas.agent_tool import RiskScanState,RiskScanResult
+from schemas.agent_tool import RiskScanState, RiskScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,7 @@ async def risk_scan_node_1(state: RiskScanState, config: RunnableConfig):
         """
 
         try:
+            logger.info(f"风险审核agent01 正在处理切片 {s_id}")
             # 使用包装类 ContractRisks 提取列表
             extracted_data = await structured_llm.ainvoke(prompt)
             if extracted_data and extracted_data.risks:
@@ -90,9 +91,6 @@ async def risk_scan_node_1(state: RiskScanState, config: RunnableConfig):
             logger.error(f"Node 1 在处理切片 {s_id} 提取风险时报错: {e}")
 
     logger.info(f"风险扫描完成，识别到风险点: {len(final_scan_results)}")
-    print(final_scan_results)
-    # json 格式化输出
-    # 返回 State 更新，注意字段名要对应你的 RiskScanState
     return {
         "scan_risks": final_scan_results,
         "logs": [f"扫描了切片: {target_ids}，发现 {len(final_scan_results)} 个风险"]
@@ -101,12 +99,22 @@ async def risk_scan_node_1(state: RiskScanState, config: RunnableConfig):
 
 # --- 汇总节点 ---
 async def aggregator(state: RiskScanState, config: RunnableConfig):
-
-
     llm = cast(ChatOpenAI, config["configurable"].get("llm"))
-    print("state: ", state)
-
-    return {}
+    risks_data = [risk.model_dump() for risk in state.scan_risks]
+    # 2. 序列化为 JSON 字符串
+    risks_str = json.dumps(risks_data, ensure_ascii=False)
+    prompt_msg = [
+        HumanMessage(content=f"""目前已经完成合同的风险扫描工作,
+        现在你需要根据这些风险点,
+        给出合同的注意事项，直接返回注意事项的相关内容，不要有多余的描述信息，也不需要过于详细300-500字总结核心注意事项即可
+        风险信息如下：
+        {risks_str}
+        """)
+    ]
+    logger.info("开始汇总风险点 生成警告信息")
+    response = await llm.ainvoke(prompt_msg)
+    logger.info("风险点 汇总完成")
+    return {"attention": response.content}
 
 
 # Build workflow

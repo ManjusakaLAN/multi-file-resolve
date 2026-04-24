@@ -5,10 +5,11 @@ from typing import Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.enum.contract import ReviewStatus, ReviewCriteria, ReviewRecommendation
+from core.enum.contract import ReviewStatus, ReviewCriteria, ReviewRecommendation, ReviewStage
 from core.enum.kb import KBType, KBOpenStatus
 from core.enum.mcp import McpType, McpConnectedStatus
 from core.enum.model import ModelProvider, ModelConfigType, ModelType
+from core.enum.user import UserStatus
 from core.infrastructure.vector_db import MilvusVectorDB
 from models.llm import LLMModel
 from models.user import User, Role, Permission
@@ -189,28 +190,16 @@ class InitService:
         """
 
         dicts = [
-            # 用户状态字典
-            DictCreate(
-                dict_code="user_status",
-                label="正常",
-                value="active",
-                sort=0,
-                is_system=1
-            ),
-            DictCreate(
-                dict_code="user_status",
-                label="禁用",
-                value="banned",
-                sort=1,
-                is_system=1
-            ),
-            DictCreate(
-                dict_code="user_status",
-                label="注销",
-                value="closed",
-                sort=2,
-                is_system=1
-            ),
+            # 用户状态字典(user_status)
+            *[
+                DictCreate(
+                    dict_code="mcp_type",
+                    label=McpType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(UserStatus)
+            ],
             # mcp类型字典(mcp_type)
             *[
                 DictCreate(
@@ -274,7 +263,7 @@ class InitService:
             # 合同审查状态字典(contract_review_status)
             *[
                 DictCreate(
-                    dict_code="contract_review_status",
+                    dict_code="review_status",
                     label=ReviewStatus.get_desc(item),
                     value=item,
                     sort=idx,
@@ -310,6 +299,16 @@ class InitService:
                     sort=idx,
                     is_system=1
                 ) for idx, item in enumerate(ReviewRecommendation)
+            ],
+            # 审查阶段
+            *[
+                DictCreate(
+                    dict_code="review_stage",
+                    label=ReviewStage.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ReviewStage)
             ]
         ]
 

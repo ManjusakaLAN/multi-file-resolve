@@ -89,6 +89,7 @@ class RiskScanState(BaseModel):
     slice_ids: List[int] = Field([], description="待处理的合同分片编号列表")
     outlines: str = Field("", description="合同大纲信息")
     scan_risks: Annotated[List[RiskScanInfo], operator.add] = Field([], description="风险扫描结果")
+    attention: str = Field("", description="注意事项")
     logs: Annotated[list[str], operator.add] = []
 
 # ✅ 必须定义这个包装类

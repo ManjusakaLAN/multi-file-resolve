@@ -2,7 +2,6 @@ import json
 import logging
 import uuid
 from typing import Optional
-from zoneinfo import available_timezones
 
 from openai import OpenAI
 from sqlalchemy import select, or_, and_
@@ -15,7 +14,7 @@ from core.enum.model import ModelType
 from core.exception.contract import ContractException
 from core.exception.llm_exception import ModelException
 from models.contract import ContractReviewTask
-from models.llm import LLMModel, model_credential_m2m, LLMCredential
+from models.llm import LLMModel
 from schemas.general import PageResponse
 from schemas.llm import LLMModelCreate, LLMModelUpdate, ModelInvokeInfo
 from util.db_util import paginate

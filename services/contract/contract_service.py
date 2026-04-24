@@ -1,13 +1,14 @@
 import logging
+import traceback
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from core.config import settings
-from core.enum.contract import ReviewStatus, ReviewStage
+from core.enum.contract import ReviewStatus, ReviewStage, RiskLevel, ReviewRecommendation
 from core.exception.contract import ContractException
 from core.infrastructure.storage import MinioClient
 from schemas.contract import ContractReviewTaskUpdate
@@ -16,7 +17,7 @@ from services.contract.contract_agent_service import ContractAgentService
 from services.file.file_service import FileService
 from services.llm.model_service import LLMModelService
 from util import file_util, ocr_util, slice_util
-from models.contract import ContractReviewTask, ContractSliceContent
+from models.contract import ContractReviewTask, ContractSliceContent, ContractRisk
 from util.db_util import paginate
 
 logger = logging.getLogger(__name__)
@@ -297,31 +298,77 @@ class ContractService:
 
             if contract_review_task.review_stage == ReviewStage.ELEMENTS_EXTRACT:
                 # 执行合同审查 提取要素、大纲生成摘要
+                logger.info(f"开始处理合同{contract_review_task.file_name}的元素提取任务")
                 await self.contract_agent_service.contract_core_content_compression_and_element_pick_up(
                     model_invoke_info,
                     contract_review_task.id,
                 )
+                logger.info(f"完成合同{contract_review_task.file_name}的元素提取任务")
             if contract_review_task.review_stage == ReviewStage.RISK_SCAN:
                 # 执行风险扫描
-                await self.contract_agent_service.contract_risk_scan(
+                logger.info(f"开始处理合同{contract_review_task.file_name}的风险扫描任务")
+                risk_scan_state = await self.contract_agent_service.contract_risk_scan(
                     model_invoke_info,
                     contract_review_task.id,
                     contract_review_task.outlines
                 )
                 # 更新状态
                 contract_review_task.review_stage = ReviewStage.REVISED_SUGGESTION
+                contract_review_task.attention = risk_scan_state.attention
                 await self.db.commit()
                 await self.db.refresh(contract_review_task)
+                logger.info(f"完成合同{contract_review_task.file_name}的风险扫描任务")
+
 
             if contract_review_task.review_stage == ReviewStage.REVISED_SUGGESTION:
                 # 生成修订建议 统计风险数量等等工作
-                pass
+                # 依次传入三种风险等级 查询并返回数量
+                # 封装一个内部函数或通用逻辑来获取数量
+                async def get_count_by_level(level):
+                    stmt = (
+                        select(func.count())
+                        .select_from(ContractRisk)
+                        .where(ContractRisk.contract_review_task_id == contract_review_task.id)
+                        .where(ContractRisk.risk_level == level)
+                    )
+                    result = await self.db.execute(stmt)
+                    return result.scalar() or 0
+
+                # 依次执行三次查询
+                high_count = await get_count_by_level(RiskLevel.HIGH)
+                medium_count = await get_count_by_level(RiskLevel.MEDIUM)
+                low_count = await get_count_by_level(RiskLevel.LOW)
+
+                contract_review_task.high_risk = high_count
+                contract_review_task.medium_risk = medium_count
+                contract_review_task.low_risk = low_count
+
+                contract_review_task.review_status = ReviewStatus.FINISH
+                contract_review_task.review_recommendation = ReviewRecommendation.SUGGEST_MODIFY
+                await self.db.commit()
+
+
 
         except Exception as e:
+            # 打印异常zhan
+            traceback.print_exc()
             logger.error(f"审核出现异常{e}")
             contract_review_task.review_status = ReviewStatus.FAILED
+            contract_review_task.error_message = str(e)
             await self.db.commit()
 
-    async def get_scan_risks(self, contract_review_task_id: str):
+    async def get_scan_risks(self, contract_review_task_id: str, risk_level: RiskLevel | str = ""):
+        """
+        获取 合同风险 按照
+        :param risk_level:
+        :param contract_review_task_id:
+        :return:
+        """
+        stmt = select(ContractRisk).where(
+            ContractRisk.contract_review_task_id == contract_review_task_id
+        ).order_by(ContractRisk.slice_id.asc())
 
+        if risk_level:
+            stmt = stmt.where(ContractRisk.risk_level == risk_level)
 
+        return (await self.db.execute(stmt)).scalars().all()
