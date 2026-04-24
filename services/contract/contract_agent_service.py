@@ -10,13 +10,14 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.enum.contract import ReviewStatus, ReviewStage
-from models.contract import ContractSliceContent, ContractReviewTask
-from schemas.agent_tool import ChunkLookupSchema, ContractOutline
+from models.contract import ContractSliceContent, ContractReviewTask, ContractRisk
+from schemas.agent_tool import ChunkLookupSchema, ContractOutline, RiskScanState
 from schemas.contract import ContractPreReviewInfoResponse, ContractReviewTaskUpdate
 from schemas.llm import ModelInvokeInfo
 from langchain.messages import HumanMessage, SystemMessage
 
 from services.contract.agent_workflow.oe_agent_workflow import parallel_workflow, State
+from services.contract.agent_workflow.risk_scan_agent_workflow import risk_scan_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +190,8 @@ class ContractAgentService:
         for outline in sorted_outlines:
             outline_info = ContractOutline(slice_id=outline.slice_id, outline=outline.outline)
             outlines.append(outline_info)
-        contract_review_task.outlines = json.dumps(outlines)
+        outlines_json_str = json.dumps([o.model_dump() for o in outlines], ensure_ascii=False)
+        contract_review_task.outlines = outlines_json_str
         elements_dict = state.elements.model_dump()
         # 记录核心要素
         contract_review_task.elements = json.dumps(elements_dict)
@@ -198,12 +200,13 @@ class ContractAgentService:
 
         contract_review_task.review_stage = ReviewStage.RISK_SCAN
         await self.db.commit()
-
+        print(state)
         return state
 
-    async def contract_risk_scan(self, model_invoke_info: ModelInvokeInfo, contract_review_task_id: str):
+    async def contract_risk_scan(self, model_invoke_info: ModelInvokeInfo, contract_review_task_id: str, outlines: str):
         """
         合同风险扫描
+        :param outlines:
         :param model_invoke_info:
         :param contract_review_task_id:
         :return:
@@ -234,3 +237,25 @@ class ContractAgentService:
         result = await self.db.execute(stmt)
         count = result.scalar()  # 获取查询到的整数数量
         slice_ids = list(range(count))
+        risk_state = RiskScanState(slice_ids=slice_ids, outlines=outlines, scan_risks=[], logs=[])
+        risk_state = await risk_scan_workflow.ainvoke(risk_state, config=config)
+
+        risk_state = RiskScanState(**risk_state)
+
+        scan_risks = risk_state.scan_risks
+        contract_risks = []
+        for scan_risk in scan_risks:
+            contract_risk = ContractRisk(
+                contract_review_task_id=contract_review_task_id,
+                slice_id=scan_risk.slice_id,
+                risk_level=scan_risk.risk_level,
+                associated_clause=scan_risk.associated_clause,
+                original_excerpt=scan_risk.original_excerpt,
+                risk_description=scan_risk.risk_description,
+                potential_impact=scan_risk.potential_impact,
+                modification_suggestion=scan_risk.modification_suggestion
+            )
+            contract_risks.append(contract_risk)
+        self.db.add_all(contract_risks)
+        logger.info(f"风险点扫描记录完成: {contract_risks}")
+        await self.db.commit()

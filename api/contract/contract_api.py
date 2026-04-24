@@ -7,7 +7,8 @@ from api.contract import contract_router
 from fastapi import UploadFile, File, Depends, Request, Body
 
 from core.enum.contract import ReviewStatus
-from schemas.contract import ContractReviewTaskResponse, ContractPreReviewInfoResponse, ContractReviewTaskUpdate
+from schemas.contract import ContractReviewTaskResponse, ContractPreReviewInfoResponse, ContractReviewTaskUpdate, \
+    RiskResponse
 from schemas.general import Result, PageResponse
 from services.contract.contract_service import ContractService
 from services.contract.contract_agent_service import ContractAgentService
@@ -129,3 +130,17 @@ async def review_contract(
     """
     return Result.success(message="审核成功",
                           data=await model_service.get_review_result(contract_review_task_id))
+
+@contract_router.get("/risks", response_model=Result[RiskResponse])
+async def get_scan_risks(
+        contract_review_task_id: str,
+        contract_service: ContractService = Depends(get_contract_service),
+):
+    """
+    获取风险点
+    :param contract_review_task_id:
+    :param contract_service:
+    :return:
+    """
+    return Result.success(message="获取风险点成功",
+                          data=await contract_service.get_scan_risks(contract_review_task_id))

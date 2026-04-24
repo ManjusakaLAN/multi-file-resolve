@@ -279,28 +279,49 @@ class ContractService:
         执行合同审查
         :return:
         """
-        stmt = select(ContractReviewTask).where(
-            ContractReviewTask.review_status == ReviewStatus.WAITING_REVIEW
-        )
-        # 找到一个 待处理的合同
-        contract_review_task = (await self.db.execute(stmt)).scalars().first()
-        if not contract_review_task:
-            return
+        contract_review_task = None
+        try:
+            stmt = select(ContractReviewTask).where(
+                ContractReviewTask.review_status == ReviewStatus.WAITING_REVIEW
+            )
+            # 找到一个 待处理的合同
+            contract_review_task = (await self.db.execute(stmt)).scalars().first()
+            if not contract_review_task:
+                return
 
-        logger.info(f"开始处理合同{contract_review_task.file_name}的审查任务")
-        contract_review_task.review_status = ReviewStatus.RESOLVING
-        await self.db.commit()
+            logger.info(f"开始处理合同{contract_review_task.file_name}的审查任务")
+            contract_review_task.review_status = ReviewStatus.RESOLVING
+            await self.db.commit()
 
-        model_invoke_info = await self.model_service.get_model_invoke_info()
+            model_invoke_info = await self.model_service.get_model_invoke_info()
 
-        # 执行合同审查 提取要素、大纲生成摘要
-        await self.contract_agent_service.contract_core_content_compression_and_element_pick_up(
-            model_invoke_info,
-            contract_review_task.id,
-        )
+            if contract_review_task.review_stage == ReviewStage.ELEMENTS_EXTRACT:
+                # 执行合同审查 提取要素、大纲生成摘要
+                await self.contract_agent_service.contract_core_content_compression_and_element_pick_up(
+                    model_invoke_info,
+                    contract_review_task.id,
+                )
+            if contract_review_task.review_stage == ReviewStage.RISK_SCAN:
+                # 执行风险扫描
+                await self.contract_agent_service.contract_risk_scan(
+                    model_invoke_info,
+                    contract_review_task.id,
+                    contract_review_task.outlines
+                )
+                # 更新状态
+                contract_review_task.review_stage = ReviewStage.REVISED_SUGGESTION
+                await self.db.commit()
+                await self.db.refresh(contract_review_task)
 
-        # 执行风险扫描
-        await self.contract_agent_service.contract_risk_scan(
-            model_invoke_info,
-            contract_review_task.id,
-        )
+            if contract_review_task.review_stage == ReviewStage.REVISED_SUGGESTION:
+                # 生成修订建议 统计风险数量等等工作
+                pass
+
+        except Exception as e:
+            logger.error(f"审核出现异常{e}")
+            contract_review_task.review_status = ReviewStatus.FAILED
+            await self.db.commit()
+
+    async def get_scan_risks(self, contract_review_task_id: str):
+
+

@@ -3,7 +3,7 @@ from typing import Optional, List, Annotated
 
 from pydantic import BaseModel, Field
 
-from schemas.contract import RiskBase
+from core.enum.contract import RiskLevel
 
 
 class ChunkLookupSchema(BaseModel):
@@ -74,6 +74,24 @@ class State(BaseModel):
     logs: Annotated[list[str], operator.add] = []
 
 
+# 1. 共享属性基类
+class RiskScanInfo(BaseModel):
+    risk_level: Optional[RiskLevel | str] = Field(..., description="风险等级：high高、medium中、low低")
+    associated_clause: str = Field(..., description="关联条款名称/章节号")
+    original_excerpt: str = Field(..., description="合同原文摘录")
+    risk_description: str = Field(..., description="风险详细说明")
+    potential_impact: str = Field(..., description="潜在法律或经济影响")
+    modification_suggestion: str = Field(..., description="针对性的修改建议")
+    slice_id: Optional[str] = Field(None, description="所属切片ID")
+
+
 class RiskScanState(BaseModel):
     slice_ids: List[int] = Field([], description="待处理的合同分片编号列表")
-    scan_risks: List[RiskBase] = Field([], description="风险扫描结果")
+    outlines: str = Field("", description="合同大纲信息")
+    scan_risks: Annotated[List[RiskScanInfo], operator.add] = Field([], description="风险扫描结果")
+    logs: Annotated[list[str], operator.add] = []
+
+# ✅ 必须定义这个包装类
+class RiskScanResult(BaseModel):
+    """用于接收 {"risks": [...]} 结构的类"""
+    risks: List[RiskScanInfo] = Field(default_factory=list, description="发现的风险点列表")

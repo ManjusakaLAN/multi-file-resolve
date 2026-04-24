@@ -1,188 +1,112 @@
+import json
 import logging
-from typing import cast
-from langchain_core.messages import HumanMessage
+from typing import cast, List
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, END, StateGraph
 
 from langchain_openai import ChatOpenAI
-from schemas.agent_tool import RiskScanState, ContractOutline, Elements
+from schemas.agent_tool import RiskScanState,RiskScanResult
 
 logger = logging.getLogger(__name__)
 
 
-# --- 节点 1：处理前半部分大纲 ---
 async def risk_scan_node_1(state: RiskScanState, config: RunnableConfig):
     llm = cast(ChatOpenAI, config["configurable"].get("llm"))
     tools = config["configurable"].get("tools")
     tool_map = {t.name: t for t in tools}
 
-    # ✅ 修复点 1: 增加 method="json_mode" 解决 400 报错
-    structured_llm = llm.with_structured_output(ContractOutline, method="json_mode")
+    # 1. 准备两个版本的 LLM
+    # 一个用于执行工具反查（带工具绑定）
     llm_with_tools = llm.bind_tools(tools)
+    # 一个用于最终的结构化风险提取（JSON 模式）
+    # 注意：使用我们之前定义的 ContractRisks 包装类，包含 List[RiskCreate]
+    structured_llm = llm.with_structured_output(RiskScanResult, method="json_mode")
 
-    mid = len(state.slice_ids) // 2
+    mid = len(state.slice_ids)
     target_ids = state.slice_ids[:mid]
 
-    results = []
+    # 将大纲转为字符串上下文
+    outlines_info = state.outlines
+
+    final_scan_results = []
+
     for s_id in target_ids:
-        # 获取原文
-        lookup_msg = [HumanMessage(content=f"请调用工具获取分片 {s_id} 的原文")]
-        response = await llm_with_tools.ainvoke(lookup_msg)
+        # --- 第一阶段：内容收集与潜在反查 ---
+        # 初始上下文包含该切片内容和大纲
+        lookup_msg = [
+            HumanMessage(content=f"""你正在进行风险扫描。
+            当前切片 ID: {s_id}
+            全文大纲参考: {outlines_info} 每部分大纲有吧对应切片的id提供，后续反查请使用这个id
 
-        content = ""
-        if response.tool_calls:
+            请先调用工具获取切片 {s_id} 的原文。
+            在阅读原文后，如果发现涉及其他条款或需要核实大纲中的信息，你可以继续调用工具进行反查。
+            如果信息已足够，请直接回答“信息已就绪”。""")
+        ]
+
+        # 模拟 ReAct 循环，最多允许 3 次反查以防死循环
+        collected_content = ""
+        for _ in range(3):
+            response = await llm_with_tools.ainvoke(lookup_msg)
+            if not response.tool_calls:
+                break
+
+            lookup_msg.append(response)
             for tool_call in response.tool_calls:
-                tool_obj = tool_map.get(tool_call["name"])
-                if tool_obj:
-                    content = await tool_obj.ainvoke(tool_call["args"])
+                target_tool = tool_map.get(tool_call["name"])
+                if target_tool:
+                    tool_output = await target_tool.ainvoke(tool_call["args"])
+                    lookup_msg.append(ToolMessage(tool_call_id=tool_call["id"], content=str(tool_output)))
+                    collected_content += f"\n--- 工具反查结果 ---\n{tool_output}"
+        # --- 第二阶段：结构化风险提取 ---
+        prompt = f"""你是一个资深的法务专家。请根据以下收集到的合同内容进行风险扫描。
 
-        # ✅ 修复点 2: Prompt 中必须包含 "JSON" 关键字
-        # 修改 prompt
-        prompt = f"""请根据以下内容生成合同大纲，必须返回 JSON 格式。
-        要求包含以下字段：
-        - slice_id: 整数，设为 {s_id}
-        - outline: 字符串，大纲摘要内容
-
-        文本内容：{content}
-        """
-
-        try:
-            outline_obj = await structured_llm.ainvoke(prompt)
-            outline_obj.slice_id = s_id
-            results.append(outline_obj)
-        except Exception as e:
-            logger.error(f"Node 1 处理切片 {s_id} 结构化输出失败: {e}")
-            # 容错：手动创建一个基础对象
-            results.append(ContractOutline(slice_id=s_id, outline="解析失败"))
-
-    logger.info(f"前半部分大纲生成完成，数量: {len(results)}")
-    return {"contract_outlines": results, "logs": [f"Node 1 处理了切片: {target_ids}"]}
-
-
-# --- 节点 2：处理后半部分大纲 ---
-async def risk_scan_node_2(state: RiskScanState, config: RunnableConfig):
-    llm = cast(ChatOpenAI, config["configurable"].get("llm"))
-    tools = config["configurable"].get("tools")
-    tool_map = {t.name: t for t in tools}
-
-    # ✅ 修复点 1: 增加 method="json_mode"
-    structured_llm = llm.with_structured_output(ContractOutline, method="json_mode")
-    llm_with_tools = llm.bind_tools(tools)
-
-    mid = len(state.slice_ids) // 2
-    target_ids = state.slice_ids[mid:]
-
-    results = []
-    for s_id in target_ids:
-        lookup_msg = [HumanMessage(content=f"获取分片 {s_id} 的原文")]
-        response = await llm_with_tools.ainvoke(lookup_msg)
-
-        content = ""
-        if response.tool_calls:
-            for tool_call in response.tool_calls:
-                tool_obj = tool_map.get(tool_call["name"])
-                if tool_obj:
-                    content = await tool_obj.ainvoke(tool_call["args"])
-
-        # ✅ 修复点 2: Prompt 中增加 "JSON" 关键字
-        prompt = f"""请根据以下内容生成合同大纲，必须返回 JSON 格式。
-        要求包含以下字段：
-        - slice_id: 整数，设为 {s_id}
-        - outline: 字符串，大纲摘要内容
-
-        文本内容：{content}
-        """
-
-        try:
-            outline_obj = await structured_llm.ainvoke(prompt)
-            outline_obj.slice_id = s_id
-            results.append(outline_obj)
-        except Exception as e:
-            logger.error(f"Node 2 处理切片 {s_id} 结构化输出失败: {e}")
-            results.append(ContractOutline(slice_id=s_id, outline="解析失败"))
-
-    logger.info(f"后半部分大纲生成完成，数量: {len(results)}")
-    return {"contract_outlines": results, "logs": [f"Node 2 处理了切片: {target_ids}"]}
-
-
-async def risk_scan_node_3(state: RiskScanState, config: RunnableConfig):
-    llm = cast(ChatOpenAI, config["configurable"].get("llm"))
-    tools = config["configurable"].get("tools")
-    tool_map = {t.name: t for t in tools}
-
-    # 1. 核心修复：使用 json_mode
-    structured_llm = llm.with_structured_output(Elements, method="json_mode")
-
-    # 初始化一个空的要素对象
-    current_elements = Elements()
-    tool_obj = tool_map.get("lookup_contract_slice")
-
-    logger.info(f"开始循环处理 {len(state.slice_ids)} 个切片进行要素提取...")
-
-    for s_id in state.slice_ids:
-        # 2. 获取当前切片内容
-        content = await tool_obj.ainvoke({"slice_id": s_id})
-
-        # 3. 构造增量提取的 Prompt
-        # 核心：必须包含 'json' 这个词以解决 400 错误
-        prompt = f"""
-        你是一个合同审查专家。当前正在处理合同的第 {s_id} 个切片。
-
-        【已有要素 JSON 数据】：
-        {current_elements.model_dump_json()}
-
-        【当前切片原文】：
-        {content}
+        【待扫描内容】：
+        {collected_content}
 
         【任务】：
-        请结合当前切片原文，对已有的要素数据进行完善或修正。
-        1. 如果已有数据中某项为空，且当前切片包含该信息，请填入。
-        2. 如果当前切片信息与已有信息冲突且当前切片更准确，请更新。
-        3. 必须以 JSON 格式返回完整的 Elements 结构。
+        识别潜在的法律和商业风险点。必须以 JSON 格式返回。
+
+        【JSON 结构要求】：
+        请返回一个对象，包含 "risks" 列表字段，列表中的每个项包含以下字段：
+        - risk_level: 风险等级（high高、medium中、low低）
+        - associated_clause: 关联条款名称/章节号
+        - original_excerpt: 合同原文摘录
+        - risk_description: 风险详细说明
+        - potential_impact: 潜在法律或经济影响
+        - modification_suggestion: 针对性的修改建议
+        - slice_id: 固定填写为 "{s_id}"
         """
 
         try:
-            # 4. 调用模型进行增量更新
-            # 由于使用了 json_mode 且 Prompt 包含 'JSON'，400 错误将消失
-            current_elements = await structured_llm.ainvoke(prompt)
-            logger.info(f"切片 {s_id} 要素增量提取完成")
+            # 使用包装类 ContractRisks 提取列表
+            extracted_data = await structured_llm.ainvoke(prompt)
+            if extracted_data and extracted_data.risks:
+                # 强制修正 slice_id 并合并
+                for r in extracted_data.risks:
+                    r.slice_id = str(s_id)
+                final_scan_results.extend(extracted_data.risks)
         except Exception as e:
-            logger.error(f"切片 {s_id} 处理失败: {str(e)}")
-            # 遇到单个切片失败，继续处理下一个，防止流程中断
-            continue
+            logger.error(f"Node 1 在处理切片 {s_id} 提取风险时报错: {e}")
 
-    logger.info("所有切片循环处理完毕，最终要素汇总成功")
-    return {"elements": current_elements, "logs": ["要素循环提取节点运行结束"]}
+    logger.info(f"风险扫描完成，识别到风险点: {len(final_scan_results)}")
+    print(final_scan_results)
+    # json 格式化输出
+    # 返回 State 更新，注意字段名要对应你的 RiskScanState
+    return {
+        "scan_risks": final_scan_results,
+        "logs": [f"扫描了切片: {target_ids}，发现 {len(final_scan_results)} 个风险"]
+    }
 
 
 # --- 汇总节点 ---
 async def aggregator(state: RiskScanState, config: RunnableConfig):
-    # 排序大纲，确保顺序正确
-    sorted_outlines = sorted(state.contract_outlines, key=lambda x: x.slice_id)
-    outline_text = "\n".join([f"[{o.slice_id}] {o.outline}" for o in sorted_outlines])
 
-    summary = f"合同审查任务完成。\n\n【生成大纲汇总】:\n{outline_text}\n\n"
-    summary += f"【核心要素摘要】: 甲方: {state.elements.party_a}, 乙方: {state.elements.party_b}, 金额: {state.elements.contract_amount}"
 
     llm = cast(ChatOpenAI, config["configurable"].get("llm"))
+    print("state: ", state)
 
-    # 基于大纲和要素生成合同摘要的提示词
-    prompt = f"""
-    你是一个合同审查专家。
-
-    【大纲】:
-    {outline_text}
-
-    【要素】:
-    {state.elements.model_dump_json()}
-
-    【任务】:
-    请结合大纲和要素，生成一份合同摘要。
-    """
-
-    summary = await llm.ainvoke(prompt)
-
-    return {"summary": summary}
+    return {}
 
 
 # Build workflow
@@ -190,17 +114,11 @@ parallel_builder = StateGraph(RiskScanState)
 
 # Add nodes
 parallel_builder.add_node("risk_scan_node_1", risk_scan_node_1)
-parallel_builder.add_node("risk_scan_node_2", risk_scan_node_2)
-parallel_builder.add_node("risk_scan_node_3", risk_scan_node_3)
 parallel_builder.add_node("aggregator", aggregator)
 
 # Add edges to connect nodes
 parallel_builder.add_edge(START, "risk_scan_node_1")
-parallel_builder.add_edge(START, "risk_scan_node_2")
-parallel_builder.add_edge(START, "risk_scan_node_3")
 parallel_builder.add_edge("risk_scan_node_1", "aggregator")
-parallel_builder.add_edge("risk_scan_node_2", "aggregator")
-parallel_builder.add_edge("risk_scan_node_3", "aggregator")
 parallel_builder.add_edge("aggregator", END)
 
-parallel_workflow = parallel_builder.compile()
+risk_scan_workflow = parallel_builder.compile()

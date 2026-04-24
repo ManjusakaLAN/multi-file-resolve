@@ -52,7 +52,8 @@ async def outline_generate_node_1(state: State, config: RunnableConfig):
             results.append(outline_obj)
         except Exception as e:
             logger.error(f"Node 1 处理切片 {s_id} 结构化输出失败: {e}")
-            # 容错：手动创建一个基础对象
+            # 如果你希望触发重试机制，这里可以抛出异常 raise e
+            # 如果这里捕获了异常并返回“解析失败”，LangGraph 则认为节点成功运行，不会触发重试
             results.append(ContractOutline(slice_id=s_id, outline="解析失败"))
 
     logger.info(f"前半部分大纲生成完成，数量: {len(results)}")
@@ -148,7 +149,7 @@ async def element_extract_node(state: State, config: RunnableConfig):
             logger.info(f"切片 {s_id} 要素增量提取完成")
         except Exception as e:
             logger.error(f"切片 {s_id} 处理失败: {str(e)}")
-            # 遇到单个切片失败，继续处理下一个，防止流程中断
+            # 如果希望在这个环节失败时进行重试，请抛出异常 raise e
             continue
 
     logger.info("所有切片循环处理完毕，最终要素汇总成功")
@@ -167,28 +168,28 @@ async def aggregator(state: State, config: RunnableConfig):
     llm = cast(ChatOpenAI, config["configurable"].get("llm"))
 
     # 基于大纲和要素生成合同摘要的提示词
-    prompt =  f"""
+    prompt = f"""
     你是一个合同审查专家。
-    
+
     【大纲】:
     {outline_text}
-    
+
     【要素】:
     {state.elements.model_dump_json()}
-    
+
     【任务】:
-    请结合大纲和要素，生成一份合同摘要。
+    请结合大纲和要素，生成一份合同摘要。直接返回标准的摘要内容，不要有多余的介绍和不必要的描述信息
     """
 
-    summary = await llm.ainvoke(prompt)
+    response = await llm.ainvoke(prompt)
 
-    return {"summary": summary}
+    return {"summary": response.content}
 
 
 # Build workflow
 parallel_builder = StateGraph(State)
 
-# Add nodes
+# Add nodes 并应用重试机制
 parallel_builder.add_node("outline_generate_node_1", outline_generate_node_1)
 parallel_builder.add_node("outline_generate_node_2", outline_generate_node_2)
 parallel_builder.add_node("element_extract_node", element_extract_node)

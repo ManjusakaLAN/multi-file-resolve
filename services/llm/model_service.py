@@ -269,7 +269,9 @@ class LLMModelService:
         if not contract_review_task:
             raise ContractException(status_code=404, message="合同不存在")
 
-        contract_review_task.outlines = json.loads(contract_review_task.outlines)
-        contract_review_task.elements = json.loads(contract_review_task.elements)
+        if contract_review_task.outlines:
+            contract_review_task.outlines = json.loads(contract_review_task.outlines)
+        if contract_review_task.elements:
+            contract_review_task.elements = json.loads(contract_review_task.elements)
 
         return contract_review_task
