@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from core.config import settings
 from core.infrastructure.database import engine, reset_database, AsyncSessionLocal
 from core.infrastructure.cache import redis_manager, get_redis_client
-from scheduler.tasks import cleanup_expired_users
 from services.init.init_service import InitService
 from api.deps import get_storage, get_milvus
 
@@ -40,23 +39,9 @@ async def lifespan(app: FastAPI):
             await service.init_basic_data()
         print("♻️ 数据库已清空并重建")
 
-    # 启动定时任务
-    scheduler = AsyncIOScheduler()
-    # 使用 interval 触发器，设置 seconds=10
-    scheduler.add_job(
-        cleanup_expired_users,
-        "interval",
-        seconds=10
-    )
-    scheduler.start()
-    print("🚀 基础设施已就绪，定时任务已启动")
 
     yield  # 分界线：上方是启动，下方是关闭
 
-    # ---- 【关闭阶段】 ----
-    # 停止调度器
-    scheduler.shutdown()
-    print("⏰ 定时任务已安全关闭")
 
     # 释放redis连接
     await redis_manager.close_redis()

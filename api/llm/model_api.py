@@ -105,3 +105,20 @@ async def delete_model(
     :return:
     """
     return Result.success(message="删除成功", data=await model_service.delete_model(model_id))
+
+@model_router.get("/connect/test", response_model=Result[ModelConfigResponse], description="=模型连接测试")
+async def connect_test(
+        model_id: str = Query(..., description="模型ID"),
+        model_service: ModelService = Depends(get_model_service)
+):
+    """
+    模型连接测试
+    :param model_id:
+    :param model_service:
+    :return:
+    """
+    try:
+        await model_service.get_model_invoke_info(model_id)
+    except Exception as e:
+        return Result.fail(message="连接失败")
+    return Result.success(message="连接成功")

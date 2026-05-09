@@ -3,6 +3,7 @@ from typing import Tuple
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.config.app_config import AppSettings
+from core.config.celery_config import CelerySettings
 from core.config.file_config import FileUploadSettings
 from core.config.infrastructure_config import MySQLSettings, RedisSettings, MinioConfig, MilvusSettings
 from core.config.web_config import AuthSettings, SecuritySettings
@@ -32,7 +33,9 @@ class Settings(
     AuthSettings, # 鉴权配置
     SecuritySettings, # 安全配置
     FileUploadSettings, # 文件上传配置
-    BaseSettings  # 确保继承了 BaseSettings
+    CelerySettings,  # celery 配置
+    BaseSettings,  # 确保继承了 BaseSettings
+
 ):
     # 统一管理 .env 加载
     model_config = SettingsConfigDict(

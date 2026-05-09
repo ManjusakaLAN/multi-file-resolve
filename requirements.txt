@@ -72,3 +72,5 @@ uvicorn==0.42.0
 wheel==0.46.3
 
 pypinyin~=0.55.0
+celery~=5.6.3
+openai~=2.36.0

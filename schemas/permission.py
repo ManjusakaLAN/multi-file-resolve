@@ -5,7 +5,7 @@ from schemas.date import CustomDatetime
 # 1. 权限基类
 class PermissionBase(BaseModel):
     name: str = Field(..., description="权限名称", max_length=64)
-    code: str = Field(..., description="权限唯一标识(如: task:delete)", max_length=64)
+    code: str = Field(..., description="权限唯一标识(如: tasks:delete)", max_length=64)
     resource_type: Optional[str] = Field(default="API", description="资源类型: API/Menu/Button")
 
 # 2. 创建权限

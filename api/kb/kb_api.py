@@ -1,4 +1,3 @@
-from idlelib.query import Query
 from typing import Optional
 
 from api.deps import get_kb_service
@@ -7,6 +6,7 @@ from fastapi import Depends, Request, Body
 from schemas.general import Result, PageResponse
 from schemas.knowledge import KnowledgeBaseResponse, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDetail
 from services.kb.kb_service import KBService
+from scheduler.tasks.celery_task import  resolve_file_task
 
 
 @kb_router.post("/create", response_model=Result[KnowledgeBaseResponse], description="创建知识库")
@@ -106,3 +106,16 @@ async def get_kb_detail(
     """
     return Result.success(message="查询成功", data=await kb_service.get_kb_detail(kb_id))
 
+@kb_router.get("/test", response_model=Result[KnowledgeBaseResponse], description="测试")
+async def test(
+    id: str
+):
+    """
+    测试
+    :param kb_service:
+    :return:
+    """
+    # 使用 .delay() 立即返回，不阻塞 FastAPI
+    task = resolve_file_task.delay(id)
+
+    return Result.success(message="查询成功")
