@@ -50,3 +50,20 @@ class ModelProvider(StrEnum):
             cls.LOCAL_CUSTOM: "本地部署或自定义中转"
         }
         return mapping.get(provider, "未知供应商")
+
+class ModelType(StrEnum):
+    """AI 技术架构维度的模型类型枚举"""
+    LLM = "llm"  # 语言模型 (大文本生成、推理)
+    EMBEDDING = "embedding"  # 向量模型 (文本转向量)
+    RERANK = "rerank"  # 重排序模型 (精排)
+    VISION = "vision"  # 多模态/视觉模型
+
+    @classmethod
+    def get_desc(cls, model_type):
+        mapping = {
+            cls.LLM: "大语言模型",
+            cls.EMBEDDING: "向量嵌入模型",
+            cls.RERANK: "重排序模型",
+            cls.VISION: "视觉多模态模型"
+        }
+        return mapping.get(model_type, "未知能力类型")

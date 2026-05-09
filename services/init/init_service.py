@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Optional, Any
 
 from sqlalchemy import select
@@ -6,15 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.enum.kb import KBType, KBOpenStatus
 from core.enum.mcp import McpType, McpConnectedStatus
-from core.enum.model import ModelProvider, ModelConfigType
+from core.enum.model import ModelProvider, ModelConfigType, ModelType
+from core.enum.status import UserStatus
 from core.infrastructure.vector_db import MilvusVectorDB
+from models.llm import ModelConfig
 from models.user import User, Role, Permission
+from schemas.llm import CredentialCreate, ModelConfigResponse
 from schemas.user import Role as RoleSchema
 from schemas.dict import DictCreate
 from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
 from services.auth.permission_service import PermissionService
 from services.kb.kb_service import KBService
+from services.llm.credential_service import CredentialService
 from services.system.dict_service import DictService
 
 logger = logging.getLogger(__name__)
@@ -27,6 +32,7 @@ class InitService:
         self.login_service = LoginService(db, redis)
         self.dict_service = DictService(db)
         self.kb_service = KBService(db, milvus_client)
+        self.credential_service = CredentialService(db)
 
     async def init_basic_data(self):
         """核心初始化逻辑"""
@@ -50,6 +56,9 @@ class InitService:
 
             # 6. 新增系统知识库
             await self._init_system_knowledge_base()
+
+            # 7. 新增系统模型 和 凭证
+            await self._init_system_model_and_credential()
 
             logger.info("✅ 项目基础数据初始化全量完成")
         except Exception as e:
@@ -178,28 +187,16 @@ class InitService:
         """
 
         dicts = [
-            # 用户状态字典
-            DictCreate(
-                dict_code="user_status",
-                label="正常",
-                value="active",
-                sort=0,
-                is_system=1
-            ),
-            DictCreate(
-                dict_code="user_status",
-                label="禁用",
-                value="banned",
-                sort=1,
-                is_system=1
-            ),
-            DictCreate(
-                dict_code="user_status",
-                label="注销",
-                value="closed",
-                sort=2,
-                is_system=1
-            ),
+            # 用户状态字典(user_status)
+            *[
+                DictCreate(
+                    dict_code="user_status",
+                    label=McpType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(UserStatus)
+            ],
             # mcp类型字典(mcp_type)
             *[
                 DictCreate(
@@ -260,6 +257,16 @@ class InitService:
                     is_system=1
                 ) for idx, item in enumerate(KBOpenStatus)
             ],
+            # 模型类型 model_type
+            *[
+                DictCreate(
+                    dict_code="model_type",
+                    label=ModelType.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(ModelType)
+            ],
         ]
 
         for dict_create in dicts:
@@ -303,3 +310,38 @@ class InitService:
             permit_roles=[user_role],
             user_id=user_id
         )
+
+    async def _init_system_model_and_credential(self):
+        deepseek_v4_flash_model = ModelConfig(
+            model_name="deepseek-v4-flash",
+            model_code="deepseek-v4-flash",
+            provider=ModelProvider.DEEPSEEK,
+            config_type="system",
+            status="active",
+            default_api_base="https://api.deepseek.com/v1",
+            model_type=ModelType.LLM
+        )
+
+        self.db.add(deepseek_v4_flash_model)
+        await self.db.commit()
+        await self.db.refresh(deepseek_v4_flash_model)
+
+        await self.credential_service.create_credential("",
+                                                        CredentialCreate(
+                                                            name="deepseek凭据",
+                                                            provider="deepseek",
+                                                            api_key="sk-edbe2c94099b45b2af70516816b7671a",
+                                                            api_base="https://api.deepseek.com/v1",
+                                                            models=[
+                                                                ModelConfigResponse(
+                                                                    model_name="Deepseek大模型",
+                                                                    model_code="deepseek-v4-flash",
+                                                                    model_type=ModelType.LLM,
+                                                                    provider=ModelProvider.DEEPSEEK,
+                                                                    default_api_base="https://api.deepseek.com/v1",
+                                                                    created_by="",
+                                                                    status="active",
+                                                                    id=deepseek_v4_flash_model.id,
+                                                                    created_at=datetime.now(),
+                                                                    config_type=ModelConfigType.SYSTEM,
+                                                                )]))

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
-from core.enum.model import ModelConfigType
+from core.enum.model import ModelConfigType, ModelType, ModelProvider
 from schemas.date import CustomDatetime
 
 
@@ -9,24 +9,27 @@ from schemas.date import CustomDatetime
 # 1. 大模型 (LLMModel) 相关 Schema
 # ==========================================
 
-class LLMModelBase(BaseModel):
+class ModelConfigBase(BaseModel):
     model_name: str = Field(..., description="展示名称", examples=["DeepSeek 满血版"])
     model_code: str = Field(..., description="模型标识符", examples=["deepseek-chat"])
     provider: str = Field(..., description="供应商标识", examples=["DeepSeek"])
+    model_type: str | ModelType = Field(ModelType.LLM, description="模型类型", examples=["llm"])
     default_api_base: Optional[str] = Field(None, description="默认API地址")
     config_type: Optional[ModelConfigType | str] = Field("system", description="配置来源: system/custom")
     status: str = Field("active", description="状态: active/banned")
 
 
-class LLMModelCreate(LLMModelBase):
+class ModelConfigCreate(ModelConfigBase):
     """创建模型时的请求体"""
     pass
 
-class LLMModelUpdate(LLMModelBase):
+
+class ModelConfigUpdate(ModelConfigBase):
     """更新模型时的请求体"""
     id: str = Field(..., description="模型ID")
 
-class LLMModelResponse(LLMModelBase):
+
+class ModelConfigResponse(ModelConfigBase):
     """模型信息返回（列表/详情）"""
     id: str
     created_by: Optional[str] = None
@@ -39,25 +42,27 @@ class LLMModelResponse(LLMModelBase):
 # 2. 凭据 (LLMCredential) 相关 Schema
 # ==========================================
 
-class LLMCredentialBase(BaseModel):
+class CredentialBase(BaseModel):
     name: str = Field(..., description="凭据别名", examples=["我的DeepSeek Key"])
     provider: str = Field(..., description="对应供应商", examples=["DeepSeek"])
     api_base: Optional[str] = Field(None, description="自定义代理地址")
 
 
-class LLMCredentialCreate(LLMCredentialBase):
+class CredentialCreate(CredentialBase):
     """用户绑定/创建 Key 时的请求体"""
     api_key: str = Field(..., description="API密钥明文")
     # 可选：创建时直接绑定模型 ID 列表
-    models: Optional[List[LLMModelResponse]] = Field(default=[], description="初始绑定的模型ID列表")
+    models: Optional[List[ModelConfigResponse]] = Field(default=[], description="初始绑定的模型ID列表")
 
-class LLMCredentialUpdate(LLMCredentialBase):
+
+class CredentialUpdate(CredentialBase):
     """用户更新 Key 时的请求体"""
     id: str = Field(..., description="凭据ID")
     api_key: Optional[str] = Field(None, description="API密钥明文")
-    models: Optional[List[LLMModelResponse]] = Field(default=[], description="初始绑定的模型ID列表")
+    models: Optional[List[ModelConfigResponse]] = Field(default=[], description="初始绑定的模型ID列表")
 
-class LLMCredentialResponse(LLMCredentialBase):
+
+class CredentialResponse(CredentialBase):
     """凭据信息返回（脱敏处理）"""
     id: str
     user_id: str
@@ -73,8 +78,14 @@ class LLMCredentialResponse(LLMCredentialBase):
 # 3. 关联与详情 (Complex Relationships)
 # ==========================================
 
-class LLMCredentialDetail(LLMCredentialResponse):
+class CredentialDetail(CredentialResponse):
     """凭据详情，包含它所绑定的模型列表"""
-    models: List[LLMModelResponse] = []
+    models: List[ModelConfigResponse] = []
 
-
+class ModelInvokeInfo(BaseModel):
+    """模型调用信息"""
+    model_id: str = Field(default= "", description="模型ID")
+    base_url: str = Field(default= "", description="API调用地址")
+    api_key: str = Field(default= "", description="API密钥")
+    provider: ModelProvider | str = Field(default= "", description="模型类型")
+    model_type: ModelType | str= Field(default= "", description="模型类型")

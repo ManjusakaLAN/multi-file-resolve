@@ -17,8 +17,8 @@ from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
 from services.kb.kb_service import KBService
-from services.llm.credential_service import LLMCredentialService
-from services.llm.model_service import LLMModelService
+from services.llm.credential_service import CredentialService
+from services.llm.model_service import ModelService
 from services.mcp.mcp_manager import MCPManager
 from services.mcp.mcp_service import McpService
 from services.system.dict_service import DictService
@@ -169,7 +169,7 @@ async def get_model_service(
     :param db:
     :return:
     """
-    return LLMModelService(db)
+    return ModelService(db)
 
 async def get_credential_service(
         db: AsyncSession = Depends(get_db),
@@ -179,7 +179,7 @@ async def get_credential_service(
     :param db:
     :return:
     """
-    return LLMCredentialService(db)
+    return CredentialService(db)
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:
     """
