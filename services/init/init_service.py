@@ -5,7 +5,7 @@ from typing import Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.enum.kb import KBType, KBOpenStatus
+from core.enum.kb import KBType, KBOpenStatus, AuditStatus, AnalysisStatus
 from core.enum.mcp import McpType, McpConnectedStatus
 from core.enum.model import ModelProvider, ModelConfigType, ModelType
 from core.enum.status import UserStatus
@@ -267,6 +267,26 @@ class InitService:
                     is_system=1
                 ) for idx, item in enumerate(ModelType)
             ],
+            # 审核状态 audit_status
+            *[
+                DictCreate(
+                    dict_code="audit_status",
+                    label=AuditStatus.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(AuditStatus)
+            ],
+            # 解析状态 analysis_status
+            *[
+                DictCreate(
+                    dict_code="analysis_status",
+                    label=AnalysisStatus.get_desc(item),
+                    value=item,
+                    sort=idx,
+                    is_system=1
+                ) for idx, item in enumerate(AnalysisStatus)
+            ]
         ]
 
         for dict_create in dicts:

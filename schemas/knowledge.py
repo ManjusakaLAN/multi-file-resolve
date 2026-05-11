@@ -51,9 +51,14 @@ class KnowledgeBaseResponse(KnowledgeBaseBase):
     deleted_date: Optional[datetime] = Field(None, description="删除时间")
     created_by: Optional[str] = Field(None, description="创建人id")
     created_at: datetime = Field(..., description="创建时间")
-
     # Pydantic V2 配置：允许从 SQLAlchemy 模型对象直接转换
     model_config = ConfigDict(from_attributes=True)
+
+class KnowledgeBaseStarResponse(KnowledgeBaseResponse):
+    """
+    返回给前端的知识库详细信息。
+    """
+    is_favorite: Optional[bool] = Field(False, description="是否收藏")
 
 # 5. 知识库详情 包括权限信息 Role
 class KnowledgeBaseDetail(KnowledgeBaseResponse):

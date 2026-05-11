@@ -4,9 +4,10 @@ from api.deps import get_kb_service
 from api.kb import kb_router
 from fastapi import Depends, Request, Body
 from schemas.general import Result, PageResponse
-from schemas.knowledge import KnowledgeBaseResponse, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDetail
+from schemas.knowledge import KnowledgeBaseResponse, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDetail, \
+    KnowledgeBaseStarResponse
 from services.kb.kb_service import KBService
-from scheduler.tasks.celery_task import  resolve_file_task
+from tasks.file_resolve_task import resolve_file_task1
 
 
 @kb_router.post("/create", response_model=Result[KnowledgeBaseResponse], description="创建知识库")
@@ -93,9 +94,10 @@ async def logic_delete_kb(
     """
     return Result.success(message="删除成功", data=await kb_service.logic_delete_kb(kb_id))
 
+
 @kb_router.get("/detail", response_model=Result[KnowledgeBaseDetail], description="获取知识库详情(权限信息等)")
 async def get_kb_detail(
-        kb_id: str ,
+        kb_id: str,
         kb_service: KBService = Depends(get_kb_service),
 ):
     """
@@ -106,16 +108,115 @@ async def get_kb_detail(
     """
     return Result.success(message="查询成功", data=await kb_service.get_kb_detail(kb_id))
 
+
+@kb_router.get("/created/page_list", response_model=Result[PageResponse[KnowledgeBaseResponse]],
+               description="分页查询用户自己创建的知识库列表")
+async def created_kb_page_list(
+        request: Request,
+        kb_name: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 10,
+        kb_service: KBService = Depends(get_kb_service),
+):
+    """
+    获取用户自身创建的知识库
+    :param request:
+    :param kb_name:
+    :param page:
+    :param page_size:
+    :param kb_service:
+    :return:
+    """
+    return Result.success(message="查询成功",
+                          data=await kb_service.page_list_created_kb(kb_name=kb_name, user_id=request.state.user_id,
+                                                                     page=page, page_size=page_size))
+
+
+@kb_router.post("/{kb_id}/join", response_model=Result[bool], description="用户加入知识库")
+async def join_knowledge_base(
+        kb_id: str,
+        request: Request,
+        kb_service: KBService = Depends(get_kb_service)
+):
+    """
+    用户主动加入某个知识库
+    """
+    await kb_service.user_join_kb(user_id=request.state.user_id, kb_id=kb_id)
+    return Result.success(message="成功加入知识库")
+
+
+@kb_router.post("/{kb_id}/exit", response_model=Result[bool], description="用户退出知识库")
+async def exit_knowledge_base(
+        kb_id: str,
+        request: Request,
+        kb_service: KBService = Depends(get_kb_service)
+):
+    """
+    用户退出已加入的知识库
+    """
+    await kb_service.user_exit_kb(user_id=request.state.user_id, kb_id=kb_id)
+    return Result.success(message="已成功退出知识库")
+
+
+@kb_router.post("/{kb_id}/star", response_model=Result[bool], description="收藏/星标知识库")
+async def star_knowledge_base(
+        kb_id: str,
+        request: Request,
+        kb_service: KBService = Depends(get_kb_service)
+):
+    """
+    对已加入的知识库进行星标收藏
+    """
+    await kb_service.user_star_kb(user_id=request.state.user_id, kb_id=kb_id)
+    return Result.success(message="收藏成功")
+
+
+@kb_router.post("/{kb_id}/unstar", response_model=Result[bool], description="取消收藏/星标知识库")
+async def unstar_knowledge_base(
+        kb_id: str,
+        request: Request,
+        kb_service: KBService = Depends(get_kb_service)
+):
+    """
+    取消知识库的星标状态
+    """
+    await kb_service.user_cancel_star_kb(user_id=request.state.user_id, kb_id=kb_id)
+    return Result.success(message="取消收藏成功")
+
+
+@kb_router.get("/join/page_list", response_model=Result[PageResponse[KnowledgeBaseStarResponse]],
+               description="分页查询用户加入的知识库列表")
+async def kb_join_page_list(
+        request: Request,
+        kb_name: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 10,
+        kb_service: KBService = Depends(get_kb_service),
+):
+    """
+    分页获取加入的知识库
+    :param request:
+    :param kb_name:
+    :param page:
+    :param page_size:
+    :param kb_service:
+    :return:
+    """
+    return Result.success(message="查询成功",
+                          data=await kb_service.get_join_kb(user_id=request.state.user_id, kb_name=kb_name, page=page,
+                                                            page_size=page_size))
+
+
 @kb_router.get("/test", response_model=Result[KnowledgeBaseResponse], description="测试")
 async def test(
-    id: str
-):
+        id: str):
     """
     测试
     :param kb_service:
     :return:
     """
-    # 使用 .delay() 立即返回，不阻塞 FastAPI
-    task = resolve_file_task.delay(id)
+    print("开始执行异步任务")
+    resolve_file_task1.delay(file_id=id)
+    print("结束执行异步任务")
 
     return Result.success(message="查询成功")

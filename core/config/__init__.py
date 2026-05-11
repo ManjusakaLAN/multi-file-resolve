@@ -1,8 +1,8 @@
 import os
 from typing import Tuple
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict, BaseSettings
 
-from core.config.app_config import AppSettings
+from core.config.app_config import AppSettings, LoggingConfig
 from core.config.celery_config import CelerySettings
 from core.config.file_config import FileUploadSettings
 from core.config.infrastructure_config import MySQLSettings, RedisSettings, MinioConfig, MilvusSettings
@@ -34,8 +34,8 @@ class Settings(
     SecuritySettings, # 安全配置
     FileUploadSettings, # 文件上传配置
     CelerySettings,  # celery 配置
-    BaseSettings,  # 确保继承了 BaseSettings
-
+    LoggingConfig, # 日志配置
+    BaseSettings
 ):
     # 统一管理 .env 加载
     model_config = SettingsConfigDict(

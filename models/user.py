@@ -69,6 +69,11 @@ class User(Base):
         back_populates="users"
     )
 
+    joined_knowledge_bases: Mapped[List["KnowledgeBase"]] = relationship(
+        "KnowledgeBase",
+        secondary="user_kb_rel",
+        back_populates="members"
+    )
 
 class Role(Base):
     __tablename__ = "roles"

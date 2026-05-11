@@ -9,7 +9,7 @@ from core.config import settings
 from core.enum.kb import KBType, KBOpenStatus
 from core.exception.llm_exception import KBException
 from core.infrastructure.vector_db import MilvusVectorDB
-from models.knowledge import KnowledgeBase, role_kb_m2m
+from models.knowledge import KnowledgeBase, role_kb_m2m, UserKnowledgeBase
 from models.user import Role, user_role_m2m
 from schemas.permission import Role as RoleSchema
 from util.convert_util import convert_cn_to_pinyin
@@ -169,13 +169,15 @@ class KBService:
 
         # 3. 更新基础字段
         kb.kb_name = kb_name
-        kb.open_status = open_status
         kb.icon_key = icon_key
         kb.description = description
 
         # 4. 【核心修复】更新权限部分
-        # 只有系统库需要处理 permit_role_ids 的角色绑定
+        # 只有系统库需要处理 permit_role_ids 的角色绑定 和 开放状态
         if kb.kb_type.__eq__(KBType.SYSTEM):
+
+            kb.open_status = open_status
+
             if permit_roles is not None:
                 # 如果传了空列表 []，则代表清空所有角色，变更为公开库
                 if len(permit_roles) > 0:
@@ -199,7 +201,7 @@ class KBService:
 
     async def logic_delete_kb(self, kb_id: str):
         """
-        软删除知识库并清理 Milvus 资源
+        软删除知识库
         """
         kb = await self.get_kb_by_id(kb_id)
 
@@ -253,3 +255,171 @@ class KBService:
             raise KBException(message="知识库不存在或已删除")
 
         return kb
+
+    async def page_list_created_kb(self, kb_name: str, user_id: str, page: int = 1,
+                                   page_size: int = 10) -> PageResponse:
+        """
+        查询用户自身创建的知识库
+        :param kb_name:
+        :param user_id:
+        :param page:
+        :param page_size:
+        :return:
+        """
+        stmt = select(KnowledgeBase).where(
+            KnowledgeBase.created_by == user_id
+        )
+        if kb_name:
+            stmt = stmt.where(KnowledgeBase.kb_name.contains(kb_name))
+
+        stmt = stmt.order_by(KnowledgeBase.created_at.desc())
+        return await paginate(self.db, stmt, page, page_size)
+
+    async def user_join_kb(self, user_id: str, kb_id: str):
+        """
+        用户加入知识库
+        逻辑：校验KB存在性 -> 校验是否已加入 -> 写入关联记录
+        """
+        # 1. 校验知识库是否存在且未删除
+        await self.get_kb_by_id(kb_id)
+
+        # 2. 检查是否已经加入过，防止重复插入
+        check_stmt = select(UserKnowledgeBase).where(
+            and_(
+                UserKnowledgeBase.user_id == user_id,
+                UserKnowledgeBase.kb_id == kb_id
+            )
+        )
+        existing = (await self.db.execute(check_stmt)).scalar_one_or_none()
+        if existing:
+            raise KBException(message="您已在成员列表中，无需重复加入")
+
+        try:
+            # 3. 创建加入记录
+            user_kb = UserKnowledgeBase(
+                user_id=user_id,
+                kb_id=kb_id,
+                join_at=datetime.now(settings.tz_info),
+                is_favorite=False
+            )
+            self.db.add(user_kb)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"User {user_id} join KB {kb_id} failed: {e}")
+            raise KBException(message="加入知识库失败，请稍后重试")
+
+    async def user_exit_kb(self, user_id: str, kb_id: str):
+        """
+        用户退出知识库
+        逻辑：校验非创建者身份 -> 删除关联记录
+        """
+        # 1. 获取关联记录
+        stmt = select(UserKnowledgeBase).where(
+            and_(
+                UserKnowledgeBase.user_id == user_id,
+                UserKnowledgeBase.kb_id == kb_id
+            )
+        )
+        user_kb = (await self.db.execute(stmt)).scalar_one_or_none()
+        if not user_kb:
+            raise KBException(message="未找到加入记录")
+
+        # 2. 业务约束：创建者不允许退出，只能走逻辑删除流程
+        kb = await self.get_kb_by_id(kb_id)
+        if kb.created_by == user_id:
+            raise KBException(message="创建者不能退出知识库，请通过删除知识库解散")
+
+        try:
+            await self.db.delete(user_kb)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"User {user_id} exit KB {kb_id} failed: {e}")
+            raise KBException(message="退出知识库失败")
+
+    async def user_star_kb(self, user_id: str, kb_id: str):
+        """
+        用户收藏/星标加入的知识库
+        逻辑：必须先加入才能收藏（或者根据业务需求，点击收藏自动触发加入）
+        """
+        stmt = select(UserKnowledgeBase).where(
+            and_(
+                UserKnowledgeBase.user_id == user_id,
+                UserKnowledgeBase.kb_id == kb_id
+            )
+        )
+        user_kb = (await self.db.execute(stmt)).scalar_one_or_none()
+
+        if not user_kb:
+            # 也可以改为自动调用 user_join_kb，这里采用严谨模式：必须先加入
+            raise KBException(message="请先加入知识库后再进行收藏")
+
+        try:
+            user_kb.is_favorite = True
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Star KB failed: {e}")
+            raise KBException(message="操作失败")
+
+    async def user_cancel_star_kb(self, user_id: str, kb_id: str):
+        """
+        用户取消收藏/星标
+        """
+        stmt = select(UserKnowledgeBase).where(
+            and_(
+                UserKnowledgeBase.user_id == user_id,
+                UserKnowledgeBase.kb_id == kb_id
+            )
+        )
+        user_kb = (await self.db.execute(stmt)).scalar_one_or_none()
+
+        if user_kb and user_kb.is_favorite:
+            try:
+                user_kb.is_favorite = False
+                await self.db.commit()
+            except Exception as e:
+                await self.db.rollback()
+                logger.error(f"Cancel star KB failed: {e}")
+                raise KBException(message="取消收藏失败")
+
+        return True
+
+    async def get_join_kb(self, kb_name: str, user_id: str, page: int = 1,
+                          page_size: int = 10) -> PageResponse:
+        """
+        获取用户加入的知识库列表（包含 is_favorite 字段）
+        """
+        # 1. 构建查询：显式添加 UserKnowledgeBase.is_favorite 列
+        stmt = (
+            select(
+                KnowledgeBase,
+                UserKnowledgeBase.is_favorite.label("is_favorite")  # 显式加 label
+            )
+            .join(
+                UserKnowledgeBase,
+                and_(
+                    UserKnowledgeBase.kb_id == KnowledgeBase.id,
+                    UserKnowledgeBase.user_id == user_id
+                )
+            )
+            .where(KnowledgeBase.is_deleted.__eq__(False))
+        )
+
+        # 2. 搜索过滤
+        if kb_name:
+            stmt = stmt.where(KnowledgeBase.kb_name.contains(kb_name))
+
+        # 3. 排序逻辑
+        stmt = stmt.order_by(
+            UserKnowledgeBase.is_favorite.desc(),
+            KnowledgeBase.created_at.desc()
+        )
+
+        # 4. 分页处理
+        # 注意：因为 select 了多列，paginate 返回的 items 会是 Tuple 格式: (KnowledgeBase, bool)
+        return await paginate(self.db, stmt, page, page_size)

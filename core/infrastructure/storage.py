@@ -71,6 +71,24 @@ class MinioClient:
             object_name
         )
 
+    def download(self, object_name: str, target_filepath: str):
+        """
+        将 MinIO 中的文件下载到本地指定路径
+        :param object_name:
+        :param target_filepath:
+        :return:
+        """
+        try:
+            # 使用 MinIO 客户端的 fget_object 方法直接下载到本地文件
+            self._client.fget_object(
+                bucket_name=  settings.MINIO_BUCKET,
+                object_name=object_name,
+                file_path=target_filepath
+            )
+        except Exception as e:
+            logger.error(f"MinIO download to local error: {e}")
+            raise ValueError(f"文件下载失败: {object_name} -> {target_filepath}")
+
     def exists(self, object_name: str) -> bool:
         """
         判断文件是否存在

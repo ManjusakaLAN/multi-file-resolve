@@ -9,6 +9,14 @@ alembic upgrade +1
 # 更新到指定版本:
 alembic upgrade <revision_id> (ID 可以在脚本文件名中找到)
 
-
 # 导出项目依赖
 pip list --format=freeze > requirements.txt
+
+# 本地开发混合启动命令(不在生产环境使用)
+celery -A core.infrastructure.celery_app worker -B -l info
+
+# 启动celery 异步任务
+celery -A core.infrastructure.celery_app worker -l info -P gevent
+
+# 启动celery 定时任务
+celery -A core.infrastructure.celery_app beat -l info

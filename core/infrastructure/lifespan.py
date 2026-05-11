@@ -1,6 +1,4 @@
 from contextlib import asynccontextmanager
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
 from core.config import settings
@@ -8,7 +6,7 @@ from core.infrastructure.database import engine, reset_database, AsyncSessionLoc
 from core.infrastructure.cache import redis_manager, get_redis_client
 from services.init.init_service import InitService
 from api.deps import get_storage, get_milvus
-
+from core.infrastructure.celery_app import celery_app
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
