@@ -64,14 +64,14 @@ class FileService:
         final_md5 = md5_obj.hexdigest()
 
         # 3. 秒传校验
-        stmt = select(FileRecord).where(FileRecord.md5.__eq__(final_md5))
-        result = await self.db.execute(stmt)
-        existing_file = result.scalar_one_or_none()
-
-        if existing_file:
-            logger.info(f"触发秒传：{existing_file.name} (MD5: {final_md5})")
-            await file.close()
-            return existing_file
+        # stmt = select(FileRecord).where(FileRecord.md5.__eq__(final_md5))
+        # result = await self.db.execute(stmt)
+        # existing_file = result.scalar_one_or_none()
+        #
+        # if existing_file:
+        #     logger.info(f"触发秒传：{existing_file.name} (MD5: {final_md5})")
+        #     await file.close()
+        #     return existing_file
 
         # 4. 文件名清洗与截断 判断文件名称是否包含特殊字符 有的话去除 "/", "\\", ":", "*", "?", '"', "<", ">", "|"]
         original_name = file.filename or "unnamed_file"

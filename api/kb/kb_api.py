@@ -50,7 +50,8 @@ async def kb_page_list(
     :return:
     """
     return Result.success(message="查询成功",
-                          data=await kb_service.page_list_kb(kb_name=kb_name,kb_type=kb_type, user_id=request.state.user_id, page=page,
+                          data=await kb_service.page_list_kb(kb_name=kb_name, kb_type=kb_type,
+                                                             user_id=request.state.user_id, page=page,
                                                              page_size=page_size))
 
 
@@ -221,7 +222,7 @@ async def kb_file_upload(
         request: Request,
         file_keys=Body(..., description="所有待处理文件的访问key", embed=True),
         kb_id=Body(..., description="知识库ID", embed=True),
-        task_type=Body(..., description="任务类型", embed=True),
+        task_type=Body(None, description="任务类型", embed=True),
         folder_id=Body(None, description="上传文件保存的目录ID", embed=True),
         task_service: TaskService = Depends(get_task_service),
 ):
@@ -236,7 +237,9 @@ async def kb_file_upload(
     :return:
     """
     return Result.success(message=await task_service.generate_task(file_keys=file_keys, kb_id=kb_id,
-                                                                   user_id=request.state.user_id, task_type=task_type,folder_id=folder_id))
+                                                                   user_id=request.state.user_id, task_type=task_type,
+                                                                   folder_id=folder_id))
+
 
 @kb_router.post("/task/retry", response_model=Result[str], description="任务失败重试")
 async def kb_task_retry(

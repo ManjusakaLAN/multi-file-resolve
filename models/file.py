@@ -37,23 +37,27 @@ class FileRecord(Base):
 
     extension: Mapped[str] = mapped_column(
         String(255),
+        nullable=True,
         comment="上传文件的扩展名,例如: pdf,txt"
     )
 
     # 可选字段：使用 Mapped[type | None] 自动推导为 nullable=True
-    mime_type: Mapped[str | None] = mapped_column(
+    mime_type: Mapped[str] = mapped_column(
         String(255),
+        nullable=True,
         comment="上传文件的MIME类型,例如: text/plain"
     )
 
-    md5: Mapped[str | None] = mapped_column(
+    md5: Mapped[str] = mapped_column(
         String(255),
+        nullable=True,
         comment="上传文件的MD5值"
     )
 
     # 审计字段
-    created_by: Mapped[str | None] = mapped_column(
+    created_by: Mapped[str] = mapped_column(
         String(36),
+        nullable=True,
         comment="创建人id"
     )
 

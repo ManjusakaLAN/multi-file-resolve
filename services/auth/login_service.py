@@ -12,6 +12,7 @@ from core.exception.auth_exception import UserLoginException, CaptchaExpireOrNot
 from core.constant.redis_key import REDIS_KEY_ACCESS_TOKEN_PREFIX, REDIS_KEY_REFRESH_TOKEN_PREFIX
 from models.user import User
 from schemas.user import UserCreate
+from services.kb.point_service import PointService
 from util.auth_util import compare_password, valid_password, hash_password, PassportService
 
 logger = logging.getLogger(__name__)
@@ -40,9 +41,10 @@ def _generate_tokens(user: User) -> Tuple[str, str]:
 
 
 class LoginService:
-    def __init__(self, db: AsyncSession, redis: Redis):
+    def __init__(self, db: AsyncSession, redis: Redis, point_service : PointService):
         self.db = db
         self.redis = redis
+        self.point_service = point_service
 
     async def login(self, account_name: str, password: str, login_ip: str, code: Optional[str] = None):
         """
@@ -93,6 +95,8 @@ class LoginService:
 
         await self.redis.setex(access_key, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, access_token)
         await self.redis.setex(refresh_key, settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, refresh_token)
+        # 登录增加一积分
+        await self.point_service.user_login_point_add(user.id, 1)
 
         return {
             "access_token": access_token,

@@ -18,6 +18,7 @@ from fastapi import Request, Depends, HTTPException
 from services.file.file_service import FileService
 from services.kb.folder_service import FolderService
 from services.kb.kb_service import KBService
+from services.kb.point_service import PointService
 from services.kb.task_service import TaskService
 from services.llm.credential_service import CredentialService
 from services.llm.model_service import ModelService
@@ -67,17 +68,10 @@ async def get_milvus() -> MilvusVectorDB:
 
 
 ########################### 业务层部分 ###########################
-async def get_login_service(
+async def get_point_service(
         db: AsyncSession = Depends(get_db),
-        redis: Redis = Depends(get_redis)
-) -> LoginService:
-    """
-    获取登录服务层对象
-    :param db:
-    :param redis:
-    :return:
-    """
-    return LoginService(db, redis)
+) -> PointService:
+    return PointService(db)
 
 
 async def get_permission_service(
@@ -104,6 +98,21 @@ async def get_file_service(
     :return:
     """
     return FileService(db, minio_client)
+
+
+async def get_login_service(
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        point_service: PointService = Depends(get_point_service)
+) -> LoginService:
+    """
+    获取登录服务层对象
+    :param point_service:
+    :param db:
+    :param redis:
+    :return:
+    """
+    return LoginService(db, redis, point_service)
 
 
 async def get_user_service(
@@ -186,6 +195,7 @@ async def get_credential_service(
     """
     return CredentialService(db)
 
+
 async def get_folder_service(
         db: AsyncSession = Depends(get_db),
 ):
@@ -195,6 +205,7 @@ async def get_folder_service(
     :return:
     """
     return FolderService(db)
+
 
 async def get_task_service(
         db: AsyncSession = Depends(get_db),
@@ -215,6 +226,7 @@ async def get_task_service(
     :return:
     """
     return TaskService(db, minio_client, file_service, vdb, model_service, folder_service)
+
 
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:

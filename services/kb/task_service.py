@@ -56,7 +56,9 @@ class TaskService:
             if not file_info:
                 continue
 
-            await self.folder_service.move_file_to_folder(file_id=file_info.id, target_folder_id=folder_id)
+
+            if folder_id:
+                await self.folder_service.move_file_to_folder(file_id=file_info.id, target_folder_id=folder_id)
 
             tasks.append(FileResolveTask(
                 file_key=file_key,
