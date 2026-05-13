@@ -8,7 +8,7 @@ from core.config import settings
 from core.exception.security_exception import TokenException
 from core.infrastructure.database import AsyncSessionLocal
 from core.infrastructure.cache import redis_manager
-from core.infrastructure.storage import MinioClient
+from core.infrastructure.storage import MinioClient, minio_client
 from core.infrastructure.vector_db import MilvusVectorDB
 from services.auth.login_service import LoginService
 from services.auth.permission_service import PermissionService
@@ -16,7 +16,9 @@ from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
+from services.kb.folder_service import FolderService
 from services.kb.kb_service import KBService
+from services.kb.task_service import TaskService
 from services.llm.credential_service import CredentialService
 from services.llm.model_service import ModelService
 from services.mcp.mcp_manager import MCPManager
@@ -53,7 +55,7 @@ async def get_storage() -> MinioClient:
     获取存储对象
     :return:
     """
-    return MinioClient()
+    return minio_client
 
 
 async def get_milvus() -> MilvusVectorDB:
@@ -149,9 +151,10 @@ async def get_mcp_service(
     """
     return McpService(db, mcp_manager)
 
+
 async def get_kb_service(
         db: AsyncSession = Depends(get_db),
-        milvus_client = Depends(get_milvus),
+        milvus_client=Depends(get_milvus),
 ):
     """
     获取知识库服务
@@ -160,6 +163,7 @@ async def get_kb_service(
     :return:
     """
     return KBService(db, milvus_client)
+
 
 async def get_model_service(
         db: AsyncSession = Depends(get_db),
@@ -171,6 +175,7 @@ async def get_model_service(
     """
     return ModelService(db)
 
+
 async def get_credential_service(
         db: AsyncSession = Depends(get_db),
 ):
@@ -180,6 +185,37 @@ async def get_credential_service(
     :return:
     """
     return CredentialService(db)
+
+async def get_folder_service(
+        db: AsyncSession = Depends(get_db),
+):
+    """
+    获取文件夹服务
+    :param db:
+    :return:
+    """
+    return FolderService(db)
+
+async def get_task_service(
+        db: AsyncSession = Depends(get_db),
+        minio_client: MinioClient = Depends(get_storage),
+        file_service: FileService = Depends(get_file_service),
+        vdb: MilvusVectorDB = Depends(get_milvus),
+        model_service: ModelService = Depends(get_model_service),
+        folder_service: FolderService = Depends(get_folder_service),
+):
+    """
+    获取任务服务
+    :param folder_service:
+    :param model_service:
+    :param vdb:
+    :param db:
+    :param minio_client:
+    :param file_service:
+    :return:
+    """
+    return TaskService(db, minio_client, file_service, vdb, model_service, folder_service)
+
 ########################### web 安全部分 ###########################
 async def get_remote_ip(request: Request) -> str:
     """

@@ -29,6 +29,7 @@ class ModelProvider(StrEnum):
     TENCENT = "Tencent"  # 混元 HunYuan
     ZHIPU = "Zhipu"  # 智谱清言 ChatGLM
     MOONSHOT = "Moonshot"  # Kimi
+    SILICON_FLOW = "SiliconFlow" # SiliconFlow
 
     # 特殊类型
     LOCAL_CUSTOM = "LocalCustom"  # 自定义或本地部署 (如 Ollama, LocalAI, vLLM)
@@ -47,7 +48,8 @@ class ModelProvider(StrEnum):
             cls.TENCENT: "腾讯 (混元)",
             cls.ZHIPU: "智谱清言 (GLM)",
             cls.MOONSHOT: "月之暗面 (Kimi)",
-            cls.LOCAL_CUSTOM: "本地部署或自定义中转"
+            cls.LOCAL_CUSTOM: "本地部署或自定义中转",
+            cls.SILICON_FLOW: "SiliconFlow (SiliconFlow)"
         }
         return mapping.get(provider, "未知供应商")
 

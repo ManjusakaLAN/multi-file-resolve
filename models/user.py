@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, DateTime, func, Table, ForeignKey, Column
+from sqlalchemy import String, DateTime, func, Table, ForeignKey, Column, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.infrastructure.database import Base
@@ -54,6 +54,14 @@ class User(Base):
     avatar: Mapped[Optional[str]] = mapped_column(String(255), comment="头像")
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, comment="最后登录时间")
     last_login_ip: Mapped[Optional[str]] = mapped_column(String(255), comment="最后登录IP")
+
+    # 资产字段：存储当前实时余额
+    total_points: Mapped[int] = mapped_column(
+        Float, server_default="0", comment="当前总积分"
+    )
+    contribution_value: Mapped[int] = mapped_column(
+        Float, server_default="0", comment="当前总贡献值"
+    )
 
     # 审计时间
     created_at: Mapped[datetime] = mapped_column(

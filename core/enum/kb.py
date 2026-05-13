@@ -32,13 +32,15 @@ class AuditStatus(StrEnum):
     UNREVIEWED = "unreviewed"
     PASS = "pass"
     REVIEW_FAILED = "review_failed"
+    NO_NEED_REVIEWED = "no_need_reviewed"
 
     @classmethod
     def get_desc(cls, status):
         mapping = {
             cls.UNREVIEWED: "未审核",
             cls.PASS: "审核通过",
-            cls.REVIEW_FAILED: "审核失败"
+            cls.REVIEW_FAILED: "审核失败",
+            cls.NO_NEED_REVIEWED: "不需要审核"
         }
         return mapping.get(status, "未知状态")
 
@@ -67,3 +69,16 @@ class AnalysisStatus(StrEnum):
             cls.FAILED: "失败"
         }
         return mapping.get(status, "未知状态")
+
+class TaskType(StrEnum):
+    """任务类型枚举"""
+    AUDIT_TASK = "audit_task"
+    REWARD_TASK = "reward_task"
+
+    @staticmethod
+    def get_desc(task_type):
+        mapping = {
+            TaskType.AUDIT_TASK: "审核任务",
+            TaskType.REWARD_TASK: "悬赏任务"
+        }
+        return mapping.get(task_type, "未知任务类型")

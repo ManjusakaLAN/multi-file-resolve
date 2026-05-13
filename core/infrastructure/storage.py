@@ -99,3 +99,5 @@ class MinioClient:
         except Exception as e:
             logger.warning(f"文件不存在: {object_name} {e}")
             return False
+
+minio_client = MinioClient()

@@ -1,0 +1,205 @@
+你是一个精通fastapi框架的高级工程师 接下来我将给你一些当前项目的项目规范 之后你需要协助我进行项目功能模块的编写
+
+# 项目 枚举规范示例：
+class KBType(StrEnum):
+    PERSONAL = "personal"
+    SYSTEM = "system"
+
+    @classmethod
+    def get_desc(cls, kb_type):
+        mapping = {
+            cls.PERSONAL: "个人知识库",
+            cls.SYSTEM: "系统知识库"
+        }
+        return mapping.get(kb_type, "未知类型")
+
+# 项目数据模型规范示例：
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = {'comment': '用户信息表'}
+
+    # 主键
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键id"
+    )
+
+    # 必填项 (Mapped[str] 自动推导为 nullable=False)
+    account_name: Mapped[str] = mapped_column(
+        String(255), unique=True, comment="账号名(用于登录)"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), server_default="active", comment="用户状态 active激活 / banned 禁用 / closed 注销"
+    )
+
+    # 可选项 (Mapped[Optional[str]] 自动推导为 nullable=True)
+    user_name: Mapped[Optional[str]] = mapped_column(String(255), comment="用户名")
+    email: Mapped[Optional[str]] = mapped_column(String(255), comment="邮箱")
+    password: Mapped[Optional[str]] = mapped_column(String(255), comment="密码")
+    password_salt: Mapped[Optional[str]] = mapped_column(String(255), comment="密码盐")
+    avatar: Mapped[Optional[str]] = mapped_column(String(255), comment="头像")
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, comment="最后登录时间")
+    last_login_ip: Mapped[Optional[str]] = mapped_column(String(255), comment="最后登录IP")
+
+    # 审计时间
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), comment="创建时间"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )
+
+    # 关系映射：Mapped[List["Role"]] 让 IDE 完美识别
+    roles: Mapped[List["Role"]] = relationship(
+        secondary=user_role_m2m,
+        back_populates="users"
+    )
+
+    joined_knowledge_bases: Mapped[List["KnowledgeBase"]] = relationship(
+        "KnowledgeBase",
+        secondary="user_kb_rel",
+        back_populates="members"
+    )
+
+# 项目schema 规范示例
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
+
+from core.enum.status import UserStatus
+from schemas.date import CustomDatetime
+from schemas.permission import Role, Permission
+
+
+# 1. 共享属性基类 (定义公共字段)
+class UserBase(BaseModel):
+    account_name: str = Field(..., description="账号名(用于登录)", min_length=3, max_length=50)
+    user_name: Optional[str] = Field(..., description="展示名称")
+    email: Optional[str] = Field(..., description="邮箱地址")
+    avatar: Optional[str] = Field(..., description="头像URL")
+    status: str = Field(default="active", description="状态: active/banned/closed")
+
+# 2. 创建用户时使用的 Schema (注册/后台添加)
+class UserCreate(UserBase):
+    password: str = Field(..., description="原始密码", min_length=6)
+    confirm_password: str = Field(..., description="确认密码")
+    code:  Optional[str] = Field(default="", description="验证码")
+    # 创建时通常不需要 salt、ip 等，由后端自动生成
+
+# 3. 更新用户信息时使用的 Schema (PATCH)
+class UserUpdate(BaseModel):
+    id:  str
+    user_name: Optional[str] = None
+    email: Optional[str] = None
+    avatar: Optional[str] = None
+    status: Optional[UserStatus | str] = None
+    # 注意：修改密码通常建议单独开一个接口，不放在通用的 Profile 更新里
+
+# 4. 登录成功或读取详细信息时返回的 Schema (不包含密码和盐)
+class User(UserBase):
+    id: str
+    last_login_at: Optional[CustomDatetime] = None
+    last_login_ip: Optional[str] = None
+    created_at: CustomDatetime
+    updated_at: CustomDatetime
+
+    # Pydantic V2 配置：允许从 SQLAlchemy 模型对象直接转换
+    model_config = ConfigDict(from_attributes=True)
+
+# 5. 内部使用的 Schema (如果某些业务逻辑需要校验密码盐)
+class UserInDB(User):
+    password: str
+    password_salt: str
+
+class UserInfo(User):  # 继承你之前的 User 展示模型
+    roles: List[Role] = []
+    permissions: List[str] = []
+
+# 项目接口编写规范示例
+from fastapi import Body, Depends, Response
+from redis.asyncio import Redis
+from redis.commands.helpers import random_string
+
+from api.auth import login_router
+from api.deps import get_login_service, get_remote_ip, get_redis, verify_token
+from core.config import settings
+from schemas.general import Result
+from schemas.user import UserCreate, User
+from services.auth.login_service import LoginService
+from services.auth.token_service import TokenService
+from util.auth_util import generate_captcha_image
+
+
+@login_router.post("/register", response_model=Result[User])
+async def register(
+        user_create: UserCreate,
+        login_service: LoginService = Depends(get_login_service),
+):
+    """
+    用户注册
+    :param user_create:
+    :param login_service:
+    :return:
+    """
+    return Result.success(message="注册成功", data=await login_service.register(user_create))
+
+
+@login_router.post("/login", response_model=Result[dict])
+async def login(
+        account_name: str = Body(..., description="账号名(用于登录)"),
+        password: str = Body(..., description="密码"),
+        code: str = Body(None, description="验证码"),
+        login_ip: str = Depends(get_remote_ip),
+        login_service: LoginService = Depends(get_login_service),
+):
+    """
+    登录接口
+    :param login_service:
+    :param login_ip: 登录ip
+    :param account_name: 账号
+    :param password: 密码
+    :param code: 验证码
+    :return:
+    """
+    return Result.success(message="登录成功", data=await login_service.login(account_name, password, code, login_ip))
+
+
+@login_router.get("/captcha")
+async def get_captcha(redis: Redis = Depends(get_redis)):
+    """
+    获取验证码
+    :return:
+    """
+    captcha_text = random_string(settings.CAPTCHA_STR_LEN)
+    image_data = generate_captcha_image(captcha_text)
+    await redis.setex(captcha_text.strip().lower(), settings.CAPTCHA_TEXT_EXPIRE_TIME,
+                      captcha_text)
+    return Response(content=image_data, media_type="image/png")
+
+
+@login_router.post("/logout", response_model=Result[str])
+async def logout(
+        login_service: LoginService = Depends(get_login_service),
+        user_id: str = Depends(verify_token),
+):
+    """
+    登出接口
+    :param user_id:
+    :param login_service:
+    :return:
+    """
+    await login_service.logout(user_id)
+    return Result.success(message="登出成功")
+
+
+@login_router.post("/refresh_token", response_model=Result[str])
+async def token_refresh(
+        refresh_token: str = Body(..., description="刷新token", embed=True),
+        redis: Redis = Depends(get_redis)
+):
+    """
+    刷新Token
+    :param refresh_token:
+    :param redis:
+    :return:
+    """
+    return Result.success(message="刷新成功", data=await TokenService.refresh_token(refresh_token, redis))

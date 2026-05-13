@@ -65,4 +65,5 @@ class KnowledgeBaseDetail(KnowledgeBaseResponse):
     """
     知识库详情 包括权限信息 Role
     """
+    is_owner: Optional[bool] = Field(False, description="是否是创建者")
     permit_roles: Optional[List[Role]] = Field([], description="知识库角色权限 id数组")

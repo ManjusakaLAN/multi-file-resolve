@@ -1,6 +1,5 @@
 from datetime import timezone, timedelta
 from typing import List
-from pydantic_settings import BaseSettings
 
 from typing import Literal
 

@@ -3,7 +3,7 @@ from celery import Celery
 from core.config import settings
 
 celery_app = Celery(
-    "multi_file_resolve",
+    "kb_file_resolve",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND
 )
@@ -21,16 +21,16 @@ celery_app.conf.update(
 )
 
 imports = [
-    "tasks.celery_task",
-    "scheduler.schedule_task",
+    "tasks.file_resolve_task",
+    # "scheduler.schedule_task",
 ]
 
-beat_schedule = {"clean_embedding_cache_task": {
-    "task": "scheduler.schedule_task.clean_embedding_cache_task",
-    "schedule": timedelta(seconds=10)
-}}
+# beat_schedule = {"clean_embedding_cache_task": {
+#     "task": "scheduler.schedule_task.clean_embedding_cache_task",
+#     "schedule": timedelta(seconds=10)
+# }}
 
 celery_app.conf.update(
-    beat_schedule=beat_schedule,
+    # beat_schedule=beat_schedule,
     imports=imports
 )

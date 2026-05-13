@@ -1,13 +1,15 @@
 from typing import Optional
 
-from api.deps import get_kb_service
+from api.deps import get_kb_service, get_task_service
 from api.kb import kb_router
 from fastapi import Depends, Request, Body
+
+from core.enum.kb import KBType
 from schemas.general import Result, PageResponse
 from schemas.knowledge import KnowledgeBaseResponse, KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseDetail, \
     KnowledgeBaseStarResponse
 from services.kb.kb_service import KBService
-from tasks.file_resolve_task import resolve_file_task1
+from services.kb.task_service import TaskService
 
 
 @kb_router.post("/create", response_model=Result[KnowledgeBaseResponse], description="创建知识库")
@@ -32,12 +34,14 @@ async def create_kb(
 async def kb_page_list(
         request: Request,
         kb_name: Optional[str] = None,
+        kb_type: Optional[str | KBType] = None,
         page: int = 1,
         page_size: int = 10,
         kb_service: KBService = Depends(get_kb_service),
 ):
     """
     分页查询知识库列表
+    :param kb_type:
     :param request:
     :param kb_name:
     :param page:
@@ -46,7 +50,7 @@ async def kb_page_list(
     :return:
     """
     return Result.success(message="查询成功",
-                          data=await kb_service.page_list_kb(kb_name=kb_name, user_id=request.state.user_id, page=page,
+                          data=await kb_service.page_list_kb(kb_name=kb_name,kb_type=kb_type, user_id=request.state.user_id, page=page,
                                                              page_size=page_size))
 
 
@@ -98,15 +102,17 @@ async def logic_delete_kb(
 @kb_router.get("/detail", response_model=Result[KnowledgeBaseDetail], description="获取知识库详情(权限信息等)")
 async def get_kb_detail(
         kb_id: str,
+        request: Request,
         kb_service: KBService = Depends(get_kb_service),
 ):
     """
     获取知识库详情(权限信息等)
+    :param request:
     :param kb_id:
     :param kb_service:
     :return:
     """
-    return Result.success(message="查询成功", data=await kb_service.get_kb_detail(kb_id))
+    return Result.success(message="查询成功", data=await kb_service.get_kb_detail(kb_id, request.state.user_id))
 
 
 @kb_router.get("/created/page_list", response_model=Result[PageResponse[KnowledgeBaseResponse]],
@@ -114,12 +120,14 @@ async def get_kb_detail(
 async def created_kb_page_list(
         request: Request,
         kb_name: Optional[str] = None,
+        kb_type: Optional[str | KBType] = None,
         page: int = 1,
         page_size: int = 10,
         kb_service: KBService = Depends(get_kb_service),
 ):
     """
     获取用户自身创建的知识库
+    :param kb_type:
     :param request:
     :param kb_name:
     :param page:
@@ -128,7 +136,8 @@ async def created_kb_page_list(
     :return:
     """
     return Result.success(message="查询成功",
-                          data=await kb_service.page_list_created_kb(kb_name=kb_name, user_id=request.state.user_id,
+                          data=await kb_service.page_list_created_kb(kb_name=kb_name, kb_type=kb_type,
+                                                                     user_id=request.state.user_id,
                                                                      page=page, page_size=page_size))
 
 
@@ -207,16 +216,37 @@ async def kb_join_page_list(
                                                             page_size=page_size))
 
 
-@kb_router.get("/test", response_model=Result[KnowledgeBaseResponse], description="测试")
-async def test(
-        id: str):
+@kb_router.post("/file/upload", response_model=Result[str], description="文件上传至知识库并解析")
+async def kb_file_upload(
+        request: Request,
+        file_keys=Body(..., description="所有待处理文件的访问key", embed=True),
+        kb_id=Body(..., description="知识库ID", embed=True),
+        task_type=Body(..., description="任务类型", embed=True),
+        folder_id=Body(None, description="上传文件保存的目录ID", embed=True),
+        task_service: TaskService = Depends(get_task_service),
+):
     """
-    测试
-    :param kb_service:
+    文件上传至知识库
+    :param folder_id:
+    :param task_type:
+    :param request:
+    :param file_keys:
+    :param kb_id:
+    :param task_service:
     :return:
     """
-    print("开始执行异步任务")
-    resolve_file_task1.delay(file_id=id)
-    print("结束执行异步任务")
+    return Result.success(message=await task_service.generate_task(file_keys=file_keys, kb_id=kb_id,
+                                                                   user_id=request.state.user_id, task_type=task_type,folder_id=folder_id))
 
-    return Result.success(message="查询成功")
+@kb_router.post("/task/retry", response_model=Result[str], description="任务失败重试")
+async def kb_task_retry(
+        task_id=Body(..., description="任务ID", embed=True),
+        task_service: TaskService = Depends(get_task_service),
+):
+    """
+    任务失败重试
+    :param task_id:
+    :param task_service:
+    :return:
+    """
+    return Result.success(message=await task_service.retry_task(task_id=task_id))

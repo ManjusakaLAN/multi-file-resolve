@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from typing import Optional
+
+from sqlalchemy import String, Integer, DateTime, func, ForeignKey, Float, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.infrastructure.database import Base
 
 
@@ -60,3 +62,25 @@ class FileRecord(Base):
         server_default=func.now(),
         comment="创建时间"
     )
+
+    # 知识库id
+    kb_id: Mapped[str] = mapped_column(
+        String(36),nullable=True ,comment="知识库id"
+    )
+
+    file_points: Mapped[int] = mapped_column(
+        Float, server_default="0", comment="当前总积分"
+    )
+
+    # 新增外键关联到 Folder
+    folder_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("folder.id"), nullable=True, comment="所属文件夹id, 为空表示在根目录"
+    )
+
+    # 是否解析完成
+    is_resolved: Mapped[bool] = mapped_column(
+        Boolean, server_default="0", comment="是否解析完成"
+    )
+
+    # 关系映射
+    folder: Mapped[Optional["Folder"]] = relationship("Folder", back_populates="files")

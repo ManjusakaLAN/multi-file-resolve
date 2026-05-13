@@ -18,8 +18,10 @@ class FileResolveTaskBase(BaseModel):
         description="解析状态: waiting, convert, ocr_resolve, file_chunk, data_clean, embedding, finish, failed"
     )
     audit_opinion: Optional[str] = Field(None, description="审核意见")
+    file_name: Optional[str] = Field(None, description="文件名")
     md_file_key: Optional[str] = Field(None, description="md文件key")
     md_file_path: Optional[str] = Field(None, description="md 文件本地路径")
+    task_type: str = Field(default="audit_task", description="任务类型")
 
 
 # 2. 创建任务时使用的 Schema

@@ -11,6 +11,7 @@ from core.exception.llm_exception import KBException
 from core.infrastructure.vector_db import MilvusVectorDB
 from models.knowledge import KnowledgeBase, role_kb_m2m, UserKnowledgeBase
 from models.user import Role, user_role_m2m
+from schemas.knowledge import KnowledgeBaseDetail
 from schemas.permission import Role as RoleSchema
 from util.convert_util import convert_cn_to_pinyin
 from util.random_util import string_random
@@ -68,7 +69,7 @@ class KBService:
             logger.error(f"创建知识库失败: {e}")
             raise e
 
-    async def permission_query_stmt_combine(self, kb_name: str, user_id: str):
+    async def permission_query_stmt_combine(self, kb_name: str, user_id: str, kb_type: str):
         # 1. 获取当前用户的所有角色编码
         role_stmt = select(Role.code).join(
             user_role_m2m,
@@ -117,17 +118,20 @@ class KBService:
         if kb_name:
             stmt = stmt.where(KnowledgeBase.kb_name.contains(kb_name))
 
+        if kb_type:
+            stmt = stmt.where(KnowledgeBase.kb_type == kb_type)
+
         # 5. 排序与分页
         stmt = stmt.order_by(KnowledgeBase.created_at.desc())
         return stmt
 
-    async def page_list_kb(self, kb_name: Optional[str],
+    async def page_list_kb(self, kb_name: Optional[str], kb_type: Optional[str],
                            user_id: str, page: int = 1, page_size: int = 10) -> PageResponse:
         """
         分页条件查询知识库 (含复杂权限过滤)
         逻辑补充：系统库如果是 closed 状态，非管理员/创建者不可见
         """
-        stmt = await self.permission_query_stmt_combine(kb_name, user_id)
+        stmt = await self.permission_query_stmt_combine(kb_name, user_id, kb_type)
         return await paginate(self.db, stmt, page, page_size)
 
     async def list_kb(self, kb_name: str, user_id: str) -> Sequence[KnowledgeBase]:
@@ -135,7 +139,7 @@ class KBService:
         不分页列表（带权限过滤，符合 SQLAlchemy 2.0 规范格式）
         逻辑：Admin/创建者看全部；普通人仅看 open 状态的系统库（需角色授权或库公开）
         """
-        stmt = await self.permission_query_stmt_combine(kb_name, user_id)
+        stmt = await self.permission_query_stmt_combine(kb_name, user_id, "")
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -228,9 +232,10 @@ class KBService:
             raise KBException(message="知识库不存在或已删除")
         return kb
 
-    async def get_kb_detail(self, kb_id: str) -> KnowledgeBase:
+    async def get_kb_detail(self, kb_id: str, user_id: str) -> KnowledgeBaseDetail:
         """
         获取知识库详情 包括角色信息Role
+        :param user_id:
         :param kb_id: 知识库ID
         :return: KnowledgeBase 实例 (由 FastAPI 自动转化为 KnowledgeBaseDetail Schema)
         """
@@ -250,16 +255,24 @@ class KBService:
         result = await self.db.execute(stmt)
         kb = result.scalar_one_or_none()
 
+
         # 3. 校验是否存在
         if not kb:
             raise KBException(message="知识库不存在或已删除")
 
-        return kb
+        kb_detail = KnowledgeBaseDetail.model_validate(kb)
 
-    async def page_list_created_kb(self, kb_name: str, user_id: str, page: int = 1,
+        if kb.created_by == user_id:
+            kb_detail.is_owner = True
+        else:
+            kb_detail.is_owner = False
+        return kb_detail
+
+    async def page_list_created_kb(self, kb_name: str, kb_type: str, user_id: str, page: int = 1,
                                    page_size: int = 10) -> PageResponse:
         """
         查询用户自身创建的知识库
+        :param kb_type:
         :param kb_name:
         :param user_id:
         :param page:
@@ -271,6 +284,9 @@ class KBService:
         )
         if kb_name:
             stmt = stmt.where(KnowledgeBase.kb_name.contains(kb_name))
+
+        if kb_type:
+            stmt = stmt.where(KnowledgeBase.kb_type == kb_type)
 
         stmt = stmt.order_by(KnowledgeBase.created_at.desc())
         return await paginate(self.db, stmt, page, page_size)

@@ -81,6 +81,41 @@ class KnowledgeBase(Base):
     )
 
 
+class Folder(Base):
+    __tablename__ = "folder"
+    __table_args__ = {'comment': '知识库目录表'}
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键id"
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(255), comment="文件夹名称"
+    )
+
+    # 关联知识库：明确该文件夹属于哪个知识库
+    kb_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_base.id"), comment="所属知识库id"
+    )
+
+    # 层级结构核心：指向自身的父ID
+    parent_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("folder.id"), nullable=True, comment="父文件夹id, 为空则在根目录"
+    )
+
+    # 审计字段
+    created_by: Mapped[Optional[str]] = mapped_column(String(36), comment="创建人id")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+
+    # --- 关系映射 ---
+    # 递归子目录
+    children: Mapped[List["Folder"]] = relationship("Folder", back_populates="parent", cascade="all, delete-orphan")
+    parent: Mapped[Optional["Folder"]] = relationship("Folder", back_populates="children", remote_side=[id])
+
+    # 目录下的文件
+    files: Mapped[List["FileRecord"]] = relationship("FileRecord", back_populates="folder")
+
+
 # models/knowledge.py (或单独的文件)
 
 class UserKnowledgeBase(Base):
@@ -112,28 +147,40 @@ class FileResolveTask(Base):
     # 知识库id
     kb_id: Mapped[str] = mapped_column(
         String(36),
+        nullable=True,
         comment="知识库id"
+    )
+
+    # reward task id
+    reward_task_id: Mapped[str] = mapped_column(
+        String(36),nullable=True ,comment="奖励任务id"
     )
 
     # 审核状态
     audit_status: Mapped[str] = mapped_column(
-        String(32), default='pending', comment="审核状态: 未审核 unreviewed 审核通过 pass 审核失败 review_failed"
+        String(32), default='unreviewed',
+        comment="审核状态: 未审核 unreviewed 审核通过 pass 审核失败 review_failed 个人无需审核 no_need_reviewed"
     )
 
     # 解析状态
     analysis_status: Mapped[str] = mapped_column(
-        String(32), default='pending',
+        String(32), default='waiting',
         comment="解析状态:waiting 等待解析中 convert 文件转换中 ocr_resolve ocr解析中 file_chunk 文件切片中 data_clean 数据清洗中 embedding 嵌入中 finish 完成 failed 失败"
     )
 
     # 审核意见
     audit_opinion: Mapped[str] = mapped_column(
-        Text, comment="审核意见 包括通过的和不通过的"
+        Text, nullable=True, comment="审核意见 包括通过的和不通过的"
     )
 
     # 文件访问key
     file_key: Mapped[str] = mapped_column(
         String(256), comment="文件访问key"
+    )
+
+    # 文件名称
+    file_name: Mapped[str] = mapped_column(
+        String(256),nullable=True, comment="文件名称"
     )
 
     # 审计字段
@@ -147,12 +194,18 @@ class FileResolveTask(Base):
 
     # md文件key
     md_file_key: Mapped[str] = mapped_column(
-        String(256), comment="md文件key"
+        String(256), nullable=True, comment="md文件key"
     )
 
     # md 文件本地路径
     md_file_path: Mapped[str] = mapped_column(
-        String(256), comment="md 文件本地路径"
+        String(256), nullable=True, comment="md 文件本地路径"
+    )
+
+    # 任务类型
+    task_type: Mapped[str] = mapped_column(
+        String(32), default='audit_task',
+        comment="任务类型:审核任务 audit_task , 悬赏任务 reward_task"
     )
 
 
@@ -164,23 +217,33 @@ class FileSliceRecord(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键id"
     )
 
+    # 任务id
+    task_id: Mapped[str] = mapped_column(
+        String(36), comment="任务id"
+    )
+
     # 文件id
-    file_id: Mapped[str] = mapped_column(
-        String(36), comment="文件id"
+    source_file_key: Mapped[str] = mapped_column(
+        String(255), comment="源文件访问key"
     )
 
     # 切片id
-    slice_id: Mapped[str] = mapped_column(
+    slice_index: Mapped[str] = mapped_column(
         String(36), comment="切片id"
     )
 
     # 切片内容
-    slice_content: Mapped[str] = mapped_column(
+    content: Mapped[str] = mapped_column(
         Text, comment="切片内容"
     )
 
+    # 切片后清洗内容
+    content_clean: Mapped[str] = mapped_column(
+        Text, comment="清洗后的内容"
+    )
+
     # 切片长度
-    slice_length: Mapped[int] = mapped_column(
+    content_len: Mapped[int] = mapped_column(
         Integer, comment="切片长度"
     )
 
@@ -193,4 +256,3 @@ class FileSliceRecord(Base):
     is_cleaned: Mapped[bool] = mapped_column(
         Boolean, default=False, comment="是否已经完成清洗"
     )
-

@@ -286,7 +286,7 @@ class InitService:
                     sort=idx,
                     is_system=1
                 ) for idx, item in enumerate(AnalysisStatus)
-            ]
+            ],
         ]
 
         for dict_create in dicts:
@@ -349,7 +349,7 @@ class InitService:
         await self.credential_service.create_credential("",
                                                         CredentialCreate(
                                                             name="deepseek凭据",
-                                                            provider="deepseek",
+                                                            provider=ModelProvider.DEEPSEEK,
                                                             api_key="sk-edbe2c94099b45b2af70516816b7671a",
                                                             api_base="https://api.deepseek.com/v1",
                                                             models=[
@@ -362,6 +362,40 @@ class InitService:
                                                                     created_by="",
                                                                     status="active",
                                                                     id=deepseek_v4_flash_model.id,
+                                                                    created_at=datetime.now(),
+                                                                    config_type=ModelConfigType.SYSTEM,
+                                                                )]))
+
+        silicon_flow_embedding_model = ModelConfig(
+            model_name="BAAI/bge-m3",
+            model_code="BAAI/bge-m3",
+            provider=ModelProvider.SILICON_FLOW,
+            config_type="system",
+            status="active",
+            default_api_base="https://api.deepseek.com/v1",
+            model_type=ModelType.EMBEDDING
+        )
+
+        self.db.add(silicon_flow_embedding_model)
+        await self.db.commit()
+        await self.db.refresh(silicon_flow_embedding_model)
+
+        await self.credential_service.create_credential("",
+                                                        CredentialCreate(
+                                                            name="silicon flow凭据",
+                                                            provider=ModelProvider.SILICON_FLOW,
+                                                            api_key="sk-ymcitiahnmmjokmjoaejombdjonlisksuuzlxppdktlnixgz",
+                                                            api_base="https://api.siliconflow.cn/v1",
+                                                            models=[
+                                                                ModelConfigResponse(
+                                                                    model_name="嵌入模型",
+                                                                    model_code="BAAI/bge-m3",
+                                                                    model_type=ModelType.EMBEDDING,
+                                                                    provider=ModelProvider.SILICON_FLOW,
+                                                                    default_api_base="https://api.siliconflow.cn/v1",
+                                                                    created_by="",
+                                                                    status="active",
+                                                                    id=silicon_flow_embedding_model.id,
                                                                     created_at=datetime.now(),
                                                                     config_type=ModelConfigType.SYSTEM,
                                                                 )]))

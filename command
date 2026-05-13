@@ -16,7 +16,7 @@ pip list --format=freeze > requirements.txt
 celery -A core.infrastructure.celery_app worker -B -l info
 
 # 启动celery 异步任务
-celery -A core.infrastructure.celery_app worker -l info -P gevent
+celery -A core.infrastructure.celery_app worker -l info --pool=threads --concurrency=4
 
 # 启动celery 定时任务
 celery -A core.infrastructure.celery_app beat -l info

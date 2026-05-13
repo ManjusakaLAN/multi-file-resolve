@@ -41,7 +41,7 @@ class ModelService:
             stmt = stmt.where(ModelConfig.model_type == model_type)
 
         result = await self.db.execute(stmt)
-        model_config = result.scalar_one_or_none()
+        model_config = result.scalars().first()
 
         if not model_config:
             raise ModelException("模型不存在", status.HTTP_404_NOT_FOUND, )
@@ -124,7 +124,8 @@ class ModelService:
             provider=create_model.provider,
             config_type=create_model.config_type,
             status=create_model.status,
-            created_by=user_id
+            created_by=user_id,
+            model_type=create_model.model_type
         )
 
         self.db.add(new_model)
@@ -233,6 +234,7 @@ class ModelService:
         model.provider = model_update.provider
         model.config_type = model_update.config_type
         model.default_api_base = model_update.default_api_base
+        model.model_type = model_update.model_type
 
         try:
             await self.db.commit()
