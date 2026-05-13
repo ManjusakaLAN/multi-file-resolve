@@ -11,7 +11,7 @@ from services.kb.folder_service import FolderService
 async def create_folder(
         kb_id: str = Body(..., description="知识库ID", embed=True),
         name: str = Body(..., description="文件夹名称", embed=True),
-        parent_id: Optional[str]  = Body(None, description="父目录ID", embed=True),
+        parent_id: Optional[str] = Body(None, description="父目录ID", embed=True),
         folder_service: FolderService = Depends(get_folder_service),
 ):
     if parent_id == "":
@@ -23,6 +23,19 @@ async def create_folder(
         parent_id=parent_id
     )
     return Result.success(message="目录创建成功", data={"id": new_folder.id})
+
+
+# 修改目录名称
+@kb_router.put("/folder/update", response_model=Result[Any], description="修改目录名称")
+async def update_folder(
+        folder_id: str = Body(..., description="目录ID", embed=True),
+        name: str = Body(..., description="目录名称", embed=True),
+        folder_service: FolderService = Depends(get_folder_service),
+):
+    await folder_service.update_kb_folder(
+        folder_id=folder_id,
+        name=name
+    )
 
 
 # --- 2. 获取目录树 (纯目录) ---
@@ -68,7 +81,6 @@ async def move_file(
         target_folder_id: Optional[str] = Body(None, description="目标文件夹ID，为空则移至根目录", embed=True),
         folder_service: FolderService = Depends(get_folder_service)
 ):
-
     if target_folder_id == "":
         target_folder_id = None
 

@@ -21,7 +21,7 @@ from models.knowledge import FileResolveTask, FileSliceRecord, KnowledgeBase
 from services.file.file_service import FileService
 from services.llm.model_service import ModelService
 from util import file_util, ocr_util
-from util.chunk_util import LLMSmartSlicer
+from util.chunk_util import LLMSmartSlicer, slice_markdown_contract
 from models.user import Role, User
 
 logger = logging.getLogger(__name__)
@@ -155,15 +155,18 @@ async def async_file_resolve_handler(task_id: str, vdb: MilvusVectorDB):
                 task.analysis_status = AnalysisStatus.FILE_CHUNK
                 await db.commit()
 
-                logger.info("✂️ 正在调用大模型进行智能切片...")
-                model_invoke_info = await model_service.get_model_invoke_info()
-                slicer = LLMSmartSlicer(
-                    api_key=model_invoke_info.api_key,
-                    base_url=model_invoke_info.base_url,
-                    model_name=model_invoke_info.model_id,
-                )
-                # 切片逻辑如果是纯计算/阻塞请求，建议在线程池运行
-                chunks = await run_in_threadpool(slicer.process_file, md_path)
+                # logger.info("✂️ 正在调用大模型进行智能切片...")
+                # model_invoke_info = await model_service.get_model_invoke_info()
+                # slicer = LLMSmartSlicer(
+                #     api_key=model_invoke_info.api_key,
+                #     base_url=model_invoke_info.base_url,
+                #     model_name=model_invoke_info.model_id,
+                # )
+                # # 切片逻辑如果是纯计算/阻塞请求，建议在线程池运行
+                # chunks = await run_in_threadpool(slicer.process_file, md_path)
+
+                chunks = slice_markdown_contract(md_path)
+
                 logger.info(f"✅ 智能切片完成，共切分出 {len(chunks)} 个片段，准备写入数据库...")
 
                 file_slice_contents = [
@@ -251,6 +254,7 @@ async def async_file_resolve_handler(task_id: str, vdb: MilvusVectorDB):
             # 任务成功结束
             task.analysis_status = AnalysisStatus.FINISH
             file_info.is_resolved = True
+            file_info.kb_id = kb_info.id
             await db.commit()
             logger.info(f"🎉 文件解析任务全部顺利完成！[task_id: {task_id}]")
 

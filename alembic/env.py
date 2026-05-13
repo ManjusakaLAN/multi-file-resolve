@@ -20,6 +20,7 @@ from models import knowledge
 from models import llm
 from models import mcp
 from models import score
+from models import conversation
 
 # Alembic Config 对象
 config = context.config

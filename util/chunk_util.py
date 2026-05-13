@@ -157,3 +157,98 @@ class LLMSmartSlicer:
             })
 
         return final_chunks
+
+
+from typing import List, Dict, Any
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+
+
+def slice_markdown_contract(
+        md_path: str,
+        chunk_min_size: int = 200,
+        chunk_target_size: int = 400,
+        chunk_max_size: int = 600
+) -> List[Dict[str, Any]]:
+    """
+    精细化合同切片：
+    按 [200, 600] 字符长度进行切分，返回带索引和长度的数据结构。
+    """
+    with open(md_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # 1. 结构化初步切分 (捕捉 H1-H4)
+    headers_to_split_on = [
+        ("#", "H1"),
+        ("##", "H2"),
+        ("###", "H3"),
+        ("####", "H4"),
+    ]
+    header_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+        strip_headers=False
+    )
+    initial_sections = header_splitter.split_text(content)
+
+    # 2. 对超长语义段落进行二次降级切分
+    refined_texts = []
+    sub_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_max_size,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", "；", "。", " "]
+    )
+
+    for sec in initial_sections:
+        if len(sec.page_content) > chunk_max_size:
+            refined_texts.extend(sub_splitter.split_text(sec.page_content))
+        else:
+            refined_texts.append(sec.page_content)
+
+    # 3. 贪婪合并与结构化输出
+    final_chunks = []
+    current_buffer = ""
+    chunk_id = 0
+
+    def add_to_result(text: str):
+        nonlocal chunk_id
+        text_content = text.strip()
+        if text_content:
+            final_chunks.append({
+                "slice_index": chunk_id,
+                "content": text_content,
+                "content_len": len(text_content)
+            })
+            chunk_id += 1
+
+    for text in refined_texts:
+        text = text.strip()
+        if not text:
+            continue
+
+        # 逻辑：如果当前缓冲区 + 新文本超过上限，先存掉当前的
+        if current_buffer and (len(current_buffer) + len(text) > chunk_max_size):
+            add_to_result(current_buffer)
+            current_buffer = text
+        elif current_buffer:
+            current_buffer += "\n\n" + text
+        else:
+            current_buffer = text
+
+        # 如果缓冲区已经达到了目标理想大小，直接封包，保证切片精细度
+        if len(current_buffer) >= chunk_target_size:
+            add_to_result(current_buffer)
+            current_buffer = ""
+
+    # 4. 尾部处理
+    if current_buffer:
+        # 兜底逻辑：如果最后一段太短，且前面有块，尝试合并到前一块
+        if final_chunks and len(current_buffer) < chunk_min_size:
+            last_chunk = final_chunks[-1]
+            if len(last_chunk["content"]) + len(current_buffer) <= chunk_max_size:
+                last_chunk["content"] += "\n\n" + current_buffer
+                last_chunk["content_len"] = len(last_chunk["content"])
+            else:
+                add_to_result(current_buffer)
+        else:
+            add_to_result(current_buffer)
+
+    return final_chunks

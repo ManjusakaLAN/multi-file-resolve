@@ -4,7 +4,7 @@ from api.auth import login_api, permission_api
 from api.file import file_api
 from api.system import user_api, dict_api, system_router
 from api.llm import mcp_api,credential_api,model_api,mcp_router,credential_router,model_router
-from api.kb import kb_api,kb_folder_api, kb_router, score_api
+from api.kb import kb_api,kb_folder_api, kb_router, score_api, chat_api
 from api.audit import  audit_api
 api_router = APIRouter()
 

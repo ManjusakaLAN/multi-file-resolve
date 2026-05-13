@@ -150,3 +150,14 @@ class FolderService:
             "extension": file.extension,
             "file_key": file.file_key
         }
+
+    async def update_kb_folder(self, folder_id: str, name: str):
+        """
+        修改目录名称
+        :param folder_id:
+        :param name:
+        :return:
+        """
+        stmt = update(Folder).where(Folder.id == folder_id)
+        await self.db.execute(stmt.values(name=name))
+        await self.db.commit()

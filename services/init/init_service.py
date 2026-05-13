@@ -19,6 +19,7 @@ from schemas.user import UserCreate
 from services.auth.login_service import LoginService  # 假设你的注册逻辑在此
 from services.auth.permission_service import PermissionService
 from services.kb.kb_service import KBService
+from services.kb.point_service import PointService
 from services.llm.credential_service import CredentialService
 from services.system.dict_service import DictService
 
@@ -29,7 +30,8 @@ class InitService:
     def __init__(self, db: AsyncSession, redis, milvus_client: MilvusVectorDB):
         self.db = db
         self.perm_service = PermissionService(db, redis)
-        self.login_service = LoginService(db, redis)
+        self.point_service = PointService(db)
+        self.login_service = LoginService(db, redis, self.point_service)
         self.dict_service = DictService(db)
         self.kb_service = KBService(db, milvus_client)
         self.credential_service = CredentialService(db)

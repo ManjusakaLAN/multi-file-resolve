@@ -266,6 +266,20 @@ class KBService:
             kb_detail.is_owner = True
         else:
             kb_detail.is_owner = False
+
+        # 判断用户是否已经加入了此知识库
+        stmt_user_join = select(UserKnowledgeBase).where(
+            and_(
+                UserKnowledgeBase.user_id == user_id,
+                UserKnowledgeBase.kb_id == kb_id
+            )
+        )
+        user_join_kb = (await self.db.execute(stmt_user_join)).scalar_one_or_none()
+        if user_join_kb:
+            kb_detail.is_joined = True
+        else:
+            kb_detail.is_joined = False
+
         return kb_detail
 
     async def page_list_created_kb(self, kb_name: str, kb_type: str, user_id: str, page: int = 1,

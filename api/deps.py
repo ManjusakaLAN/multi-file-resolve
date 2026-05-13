@@ -16,6 +16,7 @@ from services.auth.token_service import TokenService
 from fastapi import Request, Depends, HTTPException
 
 from services.file.file_service import FileService
+from services.kb.chat_service import ChatService
 from services.kb.folder_service import FolderService
 from services.kb.kb_service import KBService
 from services.kb.point_service import PointService
@@ -226,6 +227,15 @@ async def get_task_service(
     :return:
     """
     return TaskService(db, minio_client, file_service, vdb, model_service, folder_service)
+
+
+async def get_chat_service(
+        db: AsyncSession = Depends(get_db),
+        vdb: MilvusVectorDB = Depends(get_milvus),
+        model_service: ModelService = Depends(get_model_service),
+        point_service: PointService = Depends(get_point_service)
+):
+    return ChatService(db, vdb, model_service, point_service)
 
 
 ########################### web 安全部分 ###########################

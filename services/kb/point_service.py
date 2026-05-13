@@ -104,27 +104,38 @@ class PointService:
         await self.db.commit()
         return True
 
-    async def file_like_dislike_point_change(self, operator_id: str, file_id: str, is_like: bool):
+    async def file_like_dislike_point_change(self, operator_id: str, file_id: str, is_like: Optional[bool],
+                                             reward_amount: int):
         """
-        处理点赞/点踩：
-        1. 每天上限100次（超过则仅记录流水，积分为0）
-        2. 操作影响【文件上传者】的积分
+        处理点赞/点踩/取消操作：
+        is_like: True(赞), False(踩), None(取消)
+        reward_amount: 变动的积分值 (可能是 +1, -1, +2, -2)
         """
         today_start = datetime.combine(date.today(), datetime.min.time())
-        event = SourceEvent.FILE_LIKE if is_like else SourceEvent.FILE_DISLIKE
-        point_change = 2 if is_like else -2
 
-        # 1. 获取文件信息（找到上传者）
+        # --- 1. 自动判定事件类型 ---
+        if is_like is True:
+            event = SourceEvent.FILE_LIKE
+        elif is_like is False:
+            event = SourceEvent.FILE_DISLIKE
+        else:
+            # 如果 is_like 为 None，说明是取消操作
+            # 根据 reward_amount 正负判定是从什么状态取消的
+            # 原本点赞(+1)，取消则 -1；原本点踩(-1)，取消则 +1
+            event = SourceEvent.FILE_CANCEL_LIKE if reward_amount < 0 else SourceEvent.FILE_CANCEL_DISLIKE
+
+        # 2. 获取文件信息（找到上传者）
         file_stmt = select(FileRecord).where(FileRecord.id == file_id)
         file_res = await self.db.execute(file_stmt)
         file = file_res.scalar_one_or_none()
         if not file or not file.created_by:
             return False
 
-        # 2. 统计该操作者今日已点赞/点踩次数
+        # 3. 统计该操作者今日【新增评价】的次数（取消操作通常不计入上限限制，或者根据业务需求调整）
+        # 这里统计 FILE_LIKE 和 FILE_DISLIKE 两种“主动评价”行为
         count_stmt = select(func.count(ScoreHistory.id)).where(
             and_(
-                ScoreHistory.user_id == operator_id,  # 注意：统计的是操作者的次数
+                ScoreHistory.user_id == operator_id,
                 ScoreHistory.source_event.in_([SourceEvent.FILE_LIKE.value, SourceEvent.FILE_DISLIKE.value]),
                 ScoreHistory.created_at >= today_start
             )
@@ -132,13 +143,20 @@ class PointService:
         count_res = await self.db.execute(count_stmt)
         today_count = count_res.scalar() or 0
 
-        # 3. 确定最终变动分值
-        actual_change = point_change if today_count < 100 else 0
+        # 4. 确定最终变动分值
+        # 规则：如果是取消操作(CANCEL)，通常不受100次上限限制（要把分退回）；
+        # 如果是新增操作(LIKE/DISLIKE)，受上限限制。
+        actual_change = reward_amount
+        is_over_limit = False
 
-        # 4. 更新流水及用户余额（被影响的人是 file.created_by）
-        # 我们这里记录两条流水或在备注说明：谁为谁贡献了积分
-        remark = f"{SourceEvent.get_desc(event)} (来自用户:{operator_id})"
-        if today_count >= 100:
+        if event in [SourceEvent.FILE_LIKE, SourceEvent.FILE_DISLIKE]:
+            if today_count >= 100:
+                actual_change = 0
+                is_over_limit = True
+
+        # 5. 更新流水及用户余额
+        remark = f"{SourceEvent.get_desc(event)} (操作人ID:{operator_id})"
+        if is_over_limit:
             remark += " [今日次数已达上限，积分不计入]"
 
         await self._add_history_and_update_user(
@@ -150,6 +168,8 @@ class PointService:
             remark=remark
         )
 
-        # 如果你想记录操作者的流水（即便他不加分），可以再加一条
+        # 6. 同步更新文件表的总积分字段
+        file.file_points = (file.file_points or 0) + actual_change
+
         await self.db.commit()
         return True
