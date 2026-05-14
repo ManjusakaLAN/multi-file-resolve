@@ -9,6 +9,7 @@ from core.config import settings
 from core.enum.kb import KBType, KBOpenStatus
 from core.exception.llm_exception import KBException
 from core.infrastructure.vector_db import MilvusVectorDB
+from models.file import FileRecord
 from models.knowledge import KnowledgeBase, role_kb_m2m, UserKnowledgeBase
 from models.user import Role, user_role_m2m
 from schemas.knowledge import KnowledgeBaseDetail
@@ -453,3 +454,27 @@ class KBService:
         # 4. 分页处理
         # 注意：因为 select 了多列，paginate 返回的 items 会是 Tuple 格式: (KnowledgeBase, bool)
         return await paginate(self.db, stmt, page, page_size)
+
+    async def delete_file(self, file_id: str, kb_id: str):
+        """
+        删除知识库内的文件
+        :param file_id:
+        :param kb_id:
+        :return:
+        """
+        kb_info = (await self.db.execute(select(KnowledgeBase).where(KnowledgeBase.id == kb_id))).scalars().first()
+        if not kb_info:
+            raise KBException("没有这个知识库")
+
+        file_info = (await self.db.execute(select(FileRecord).where(FileRecord.id == file_id))).scalars().first()
+        if not file_info:
+            raise KBException("没有这个文件")
+        # 删除知识库内的内容
+        self.milvus_client.delete(
+            collection_name=kb_info.collection_name,
+            expr=f'meta_data["file_key"] == {file_info.file_key}'
+        )
+
+        # 删除数据库记录
+        await self.db.delete(file_info)
+        await self.db.commit()

@@ -173,3 +173,22 @@ class PointService:
 
         await self.db.commit()
         return True
+
+    async def get_user_score(self, user_id):
+
+        stmt = select(User).where(User.id == user_id)
+        user = await self.db.execute(stmt)
+        user = user.scalar_one_or_none()
+        return {
+            "total_points": user.total_points,
+            "contribution_value": user.contribution_value
+        }
+
+    async def get_file_points_rank(self, limit: int = 10):
+        """
+        获取系统文件积分排名 只需要前10个
+        :param limit:
+        :return:
+        """
+        stmt_limit = select(FileRecord).where(FileRecord.is_resolved == True).order_by(FileRecord.file_points.desc()).limit(limit)
+        return (await self.db.execute(stmt_limit)).scalars().all()

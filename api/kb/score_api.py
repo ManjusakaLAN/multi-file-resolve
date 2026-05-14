@@ -2,6 +2,7 @@ from typing import List, Optional, Any, Dict
 from fastapi import Depends, Request, Query, Body
 from api.kb import kb_router
 from api.deps import get_folder_service, get_point_service
+from schemas.file import FileRecordResponse
 from schemas.general import Result
 from services.kb.folder_service import FolderService
 from services.kb.point_service import PointService
@@ -16,6 +17,7 @@ async def file_read_point_add(
 ):
     return Result.success(message="添加积分成功",
                           data=await point_service.file_read_point_add(file_id=file_id, user_id=request.state.user_id))
+
 
 @kb_router.post("/score/file_like", response_model=Result[Any], description="对文件检索结果进行点赞")
 async def file_like_point_change(
@@ -36,7 +38,26 @@ async def file_like_point_change(
         # 已经是布尔值或其他情况
         is_like_bool = bool(is_like)
 
-
     return Result.success(message="添加积分成功",
-                          data=await point_service.file_like_dislike_point_change(operator_id=request.state.user_id,file_id=file_id, is_like=is_like_bool)
-    )
+                          data=await point_service.file_like_dislike_point_change(operator_id=request.state.user_id,
+                                                                                  file_id=file_id, is_like=is_like_bool)
+                          )
+
+
+@kb_router.get("/score/user_score", response_model=Result[Any], description="获取用户积分")
+async def get_user_score(
+        request: Request,
+        point_service: PointService = Depends(get_point_service),
+):
+    return Result.success(message="获取用户积分和贡献值成功",
+                          data=await point_service.get_user_score(user_id=request.state.user_id)
+                          )
+
+
+@kb_router.get("/score/file/points/rank", response_model=Result[list[FileRecordResponse]], description="获取系统文件积分排名")
+async def get_user_score(
+        limit: Optional[int] = Query(10, description="查询前x个积分文件"),
+        point_service: PointService = Depends(get_point_service),
+):
+    return Result.success(message="获取用户积分和贡献值成功",
+                          data=await point_service.get_file_points_rank(limit))

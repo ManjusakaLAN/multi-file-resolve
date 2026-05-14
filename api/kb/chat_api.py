@@ -1,10 +1,11 @@
-from fastapi import Depends, Request, Body
+from fastapi import Depends, Request, Body, Query
 from starlette.responses import StreamingResponse
 from api.deps import get_chat_service
 from api.kb import kb_router
+from schemas.conversation import ChatSessionResponse
 from schemas.general import Result
 from services.kb.chat_service import ChatService
-from typing import List, Any
+from typing import List, Any, Optional
 
 
 @kb_router.post("/rag/chat", description="知识库增强检索对话 (SSE流式)")
@@ -13,6 +14,7 @@ async def rag_chat(
         conversation_id: str = Body(..., description="会话ID", embed=True),
         query: str = Body(..., description="查询内容", embed=True),
         kb_ids: List[str] = Body(..., description="知识库ID列表", embed=True),
+        kb_id: Optional[str] = Body(None, description="知识库ID", embed=True),
         model_id: str = Body(..., description="模型ID", embed=True),
         chat_service: ChatService = Depends(get_chat_service),
 ):
@@ -41,6 +43,7 @@ async def rag_chat(
             query=query,
             kb_ids=kb_ids,
             model_id=model_id,
+            kb_id=kb_id,
             history_limit=6  # 可根据需要调整历史记录条数
         ),
         media_type="text/event-stream",
@@ -79,3 +82,71 @@ async def recall_file_evaluate(
     return Result.success(message="点评成功",
                           data=await chat_service.recall_file_evaluate(message_id, file_key, evaluate_result,
                                                                        request.state.user_id))
+
+
+@kb_router.get("/conversation/list", response_model=Result[List[ChatSessionResponse]], description="获取会话列表")
+async def get_conversation_list(
+        request: Request,
+        kb_id: Optional[str] = Query(None, description="知识库ID (single模式必传)"),
+        session_type: Optional[str] = Query(None, description="会话类型: single/global"),
+        chat_service: ChatService = Depends(get_chat_service),
+):
+    """
+    获取会话列表：
+    1. session_type 为 global 时，查询全量/主页会话
+    2. session_type 为 single 时，必须配合 kb_id 查询特定库内会_
+    """
+    user_id = request.state.user_id
+    sessions = await chat_service.conversation_list(
+        user_id=user_id,
+        kb_id=kb_id,
+        session_type=session_type
+    )
+
+    # 转换为响应模型列表
+    data = [ChatSessionResponse.model_validate(s) for s in sessions]
+    return Result.success(data=data)
+
+
+@kb_router.put("/conversation/edit", response_model=Result[bool], description="修改会话信息")
+async def edit_conversation(
+        request: Request,
+        conversation_id: str = Body(..., description="会话ID", embed=True),
+        topic: str = Body(..., description="新的会话主题/标题", embed=True),
+        chat_service: ChatService = Depends(get_chat_service),
+):
+    """
+    修改会话标题：
+    仅限会话所有者操作。
+    """
+    user_id = request.state.user_id
+    success = await chat_service.edit_conversation(
+        user_id=user_id,
+        session_id=conversation_id,
+        topic=topic
+    )
+
+    if success:
+        return Result.success(message="修改成功", data=True)
+    return Result.error(message="修改失败，会话不存在或无权限")
+
+
+@kb_router.delete("/conversation/{conversation_id}", response_model=Result[bool], description="删除会话")
+async def delete_conversation(
+        request: Request,
+        conversation_id: str,
+        chat_service: ChatService = Depends(get_chat_service),
+):
+    """
+    删除会话：
+    执行逻辑删除（is_deleted=1），不物理抹除数据。
+    """
+    user_id = request.state.user_id
+    success = await chat_service.delete_conversation(
+        user_id=user_id,
+        session_id=conversation_id
+    )
+
+    if success:
+        return Result.success(message="删除成功", data=True)
+    return Result.error(message="删除失败，会话不存在或无权限")

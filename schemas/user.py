@@ -14,6 +14,8 @@ class UserBase(BaseModel):
     email: Optional[str] = Field(..., description="邮箱地址")
     avatar: Optional[str] = Field(..., description="头像URL")
     status: str = Field(default="active", description="状态: active/banned/closed")
+    total_points: int = Field(default=0, description="总积分")
+    contribution_value: int = Field(default=0, description="贡献值")
 
 # 2. 创建用户时使用的 Schema (注册/后台添加)
 class UserCreate(UserBase):

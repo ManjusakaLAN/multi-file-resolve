@@ -2,7 +2,7 @@ from typing import Optional
 
 from api.deps import get_kb_service, get_task_service
 from api.kb import kb_router
-from fastapi import Depends, Request, Body
+from fastapi import Depends, Request, Body, Query
 
 from core.enum.kb import KBType
 from schemas.general import Result, PageResponse
@@ -253,3 +253,19 @@ async def kb_task_retry(
     :return:
     """
     return Result.success(message=await task_service.retry_task(task_id=task_id))
+
+
+@kb_router.delete("/file/delete/{file_id}", response_model=Result[bool], description="删除知识库内的文件")
+async def delete_file(
+        file_id: str,
+        kb_id: str = Query(..., description="知识库ID"),
+        kb_service: KBService = Depends(get_kb_service),
+):
+    """
+    删除知识库内的文件
+    :param kb_id:
+    :param file_id:
+    :param kb_service:
+    :return:
+    """
+    return Result.success(message="删除成功", data=await kb_service.delete_file(file_id, kb_id))

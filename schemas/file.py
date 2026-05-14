@@ -12,6 +12,7 @@ class FileRecordBase(BaseModel):
     extension: str = Field(..., description="扩展名")
     mime_type: Optional[str] = Field(None, description="MIME类型")
     md5: Optional[str] = Field(None, description="文件MD5值")
+    file_points: float = Field(0, description="当前总积分")
 
 
 # --- 2. 响应模型 (用于接口返回数据) ---

@@ -1,12 +1,12 @@
 import json
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
 from pydantic import SecretStr
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -151,7 +151,7 @@ class ChatService:
 
         return final_recall_info
 
-    async def _get_or_create_session(self, user_id: str, session_id: str, query: str) -> ChatSession:
+    async def _get_or_create_session(self, user_id: str, session_id: str, query: str, kb_id: str) -> ChatSession:
         """获取或创建会话"""
         stmt = select(ChatSession).where(ChatSession.id == session_id)
         result = await self.db.execute(stmt)
@@ -161,12 +161,22 @@ class ChatService:
             # 第一次对话，创建新会话
             # 默认取 query 的前 20 个字作为初始主题
             topic = query[:20] + "..." if len(query) > 20 else query
-            session = ChatSession(
-                id=session_id,
-                user_id=user_id,
-                topic=topic,
-                session_type="single"  # 默认为 single，可在 controller 层逻辑判断
-            )
+
+            if kb_id:
+                session = ChatSession(
+                    id=session_id,
+                    user_id=user_id,
+                    topic=topic,
+                    session_type="single"  # 默认为 single，可在 controller 层逻辑判断
+                )
+            else:
+                session = ChatSession(
+                    id=session_id,
+                    kb_id=kb_id,
+                    user_id=user_id,
+                    topic=topic,
+                    session_type="global"  # global，可在 controller 层逻辑判断
+                )
             self.db.add(session)
             await self.db.flush()
         return session
@@ -192,11 +202,12 @@ class ChatService:
             query: str,
             kb_ids: list[str],
             model_id: str,
+            kb_id: str,
             history_limit: int = 6
     ) -> AsyncGenerator[str, None]:
 
         # 1. 获取/创建会话
-        session = await self._get_or_create_session(user_id, session_id, query)
+        session = await self._get_or_create_session(user_id, session_id, query, kb_id)
 
         # 2. 获取历史记录并转换为 LangChain 消息格式
         history_records = await self.get_history_messages(session_id, limit=history_limit)
@@ -360,3 +371,52 @@ class ChatService:
             await self.db.rollback()
             logger.error(f"评价提交失败: {str(e)}")
             raise e
+
+    async def edit_conversation(self, user_id: str, session_id: str, topic: str):
+        """
+        修改会话信息（主要是修改主题/标题）
+        """
+        # 使用 update 语句并增加 user_id 条件，确保越权保护
+        stmt = (
+            update(ChatSession)
+            .where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+            .values(topic=topic)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+
+    async def delete_conversation(self, user_id: str, session_id: str):
+        """
+        逻辑删除会话
+        """
+        stmt = (
+            update(ChatSession)
+            .where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+            .values(is_deleted=1)  # 1 表示已删除
+        )
+        await self.db.execute(stmt)
+        await self.db.commit()
+
+    async def conversation_list(self, user_id: str, kb_id: str = None, session_type: str = None):
+        """
+        获取用户的会话列表
+        """
+        stmt = (
+            select(ChatSession)
+            .where(ChatSession.user_id == user_id, ChatSession.is_deleted == 0)
+        )
+
+        # 如果传入了类型（single/global），则进行过滤
+        if session_type == "global":
+            stmt = stmt.where(ChatSession.session_type == session_type)
+        else:
+            stmt = stmt.where(ChatSession.kb_id == kb_id)
+
+        # 按创建时间倒序排列，让最新的会话排在最前面
+        stmt = stmt.order_by(desc(ChatSession.create_time))
+
+        result = await self.db.execute(stmt)
+        sessions = result.scalars().all()
+
+        # 转换为前端易读的字典格式
+        return sessions
